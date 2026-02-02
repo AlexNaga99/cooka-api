@@ -1,5 +1,7 @@
 import { User } from './user.model';
 
+export type RecipeStatus = 'published' | 'draft';
+
 export interface Recipe {
   id: string;
   authorId: string;
@@ -14,6 +16,7 @@ export interface Recipe {
   ratingAvg: number;
   ratingsCount: number;
   popularityScore?: number;
+  status?: RecipeStatus;
   createdAt: Date;
   author?: User;
 }

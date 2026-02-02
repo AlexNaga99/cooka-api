@@ -1,8 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -17,14 +21,22 @@ import {
 } from '@nestjs/swagger';
 import { RecipesService } from './recipes.service';
 import { FirebaseAuthGuard } from '../common/guards/firebase-auth.guard';
+import { OptionalFirebaseAuthGuard } from '../common/guards/optional-firebase-auth.guard';
 import { CurrentUser, FirebaseUser } from '../common/decorators/current-user.decorator';
 import {
   RecipeCreateRequestDto,
   RecipeVariationRequestDto,
+  RecipeUpdateRequestDto,
   RecipeResponseDto,
   RecipeFeedResponseDto,
 } from './dto/recipe.dto';
-import { RateRequestDto, RateResponseDto, CommentRequestDto, CommentResponseDto } from './dto/rate-comment.dto';
+import {
+  RateRequestDto,
+  RateResponseDto,
+  CommentRequestDto,
+  CommentResponseDto,
+  CommentListResponseDto,
+} from './dto/rate-comment.dto';
 import { ErrorResponseDto } from '../common/dto/error.dto';
 import { RatingsService } from './ratings.service';
 
@@ -69,13 +81,67 @@ export class RecipesController {
     return this.recipesService.getFeed(limitNum, cursor ?? null);
   }
 
+  @Get(':id/comments')
+  @ApiOperation({ summary: 'Listar comentários da receita' })
+  @ApiParam({ name: 'id' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiResponse({ status: 200, type: CommentListResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async getComments(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ): Promise<CommentListResponseDto> {
+    const limitNum = Math.min(parseInt(limit ?? '20', 10) || 20, 50);
+    return this.ratingsService.getComments(id, limitNum, cursor ?? null);
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Obter receita por ID' })
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @ApiOperation({ summary: 'Obter receita por ID (autor vê rascunho)' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, type: RecipeResponseDto })
   @ApiResponse({ status: 404, type: ErrorResponseDto })
-  async getById(@Param('id') id: string): Promise<RecipeResponseDto> {
-    return this.recipesService.getById(id);
+  async getById(
+    @Param('id') id: string,
+    @CurrentUser() user?: FirebaseUser,
+  ): Promise<RecipeResponseDto> {
+    return this.recipesService.getById(id, user?.uid);
+  }
+
+  @Patch(':id')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Atualizar receita (só autor)' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, type: RecipeResponseDto })
+  @ApiResponse({ status: 401, type: ErrorResponseDto })
+  @ApiResponse({ status: 403, type: ErrorResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async update(
+    @Param('id') id: string,
+    @CurrentUser() user: FirebaseUser,
+    @Body() dto: RecipeUpdateRequestDto,
+  ): Promise<RecipeResponseDto> {
+    return this.recipesService.update(id, user.uid, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Excluir receita (só autor)' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 204, description: 'Receita excluída' })
+  @ApiResponse({ status: 401, type: ErrorResponseDto })
+  @ApiResponse({ status: 403, type: ErrorResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async delete(
+    @Param('id') id: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<void> {
+    await this.recipesService.delete(id, user.uid);
   }
 
   @Post(':id')

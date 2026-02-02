@@ -44,3 +44,12 @@ export class CommentResponseDto {
   @ApiPropertyOptional({ type: () => UserResponseDto })
   author?: UserResponseDto;
 }
+
+export class CommentListResponseDto {
+  @ApiProperty({ type: [CommentResponseDto] })
+  items: CommentResponseDto[];
+  @ApiPropertyOptional({ nullable: true })
+  nextCursor?: string | null;
+  @ApiProperty()
+  hasMore: boolean;
+}

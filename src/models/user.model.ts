@@ -8,6 +8,7 @@ export interface User {
   popularityScore: number;
   createdAt: Date;
   isAdsFree?: boolean;
+  deletedAt?: Date | null;
 }
 
 export interface UserProfile extends User {}

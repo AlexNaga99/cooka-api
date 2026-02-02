@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { getFirestoreDb } from '../config/firebase.config';
+import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
-import type { RateResponseDto, CommentResponseDto } from './dto/rate-comment.dto';
+import type { RateResponseDto, CommentResponseDto, CommentListResponseDto } from './dto/rate-comment.dto';
 import type { User } from '../models/user.model';
 
 @Injectable()
@@ -10,6 +11,49 @@ export class RatingsService {
 
   private get db() {
     return getFirestoreDb();
+  }
+
+  async getComments(
+    recipeId: string,
+    limit: number,
+    cursor?: string | null,
+  ): Promise<CommentListResponseDto> {
+    const recipe = await this.db.collection('recipes').doc(recipeId).get();
+    if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
+
+    let query = this.db
+      .collection('comments')
+      .where('recipeId', '==', recipeId)
+      .orderBy('createdAt', 'desc')
+      .limit(limit + 1);
+    if (cursor) {
+      const cursorDoc = await this.db.collection('comments').doc(cursor).get();
+      if (cursorDoc.exists) {
+        const createdAt = (cursorDoc.data() as { createdAt?: unknown })?.createdAt;
+        query = query.startAfter(createdAt).limit(limit + 1);
+      }
+    }
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, limit);
+    const hasMore = snapshot.docs.length > limit;
+    const nextCursor = hasMore && docs.length ? docs[docs.length - 1].id : null;
+    const items: CommentResponseDto[] = [];
+    for (const d of docs) {
+      const data = d.data() as { recipeId: string; authorId: string; text: string; createdAt: unknown };
+      const userDoc = await this.db.collection('users').doc(data.authorId).get();
+      const author = userDoc.exists
+        ? this.authService.toUserResponse(userDoc.data() as User & { createdAt?: { toDate: () => Date } }, data.authorId)
+        : undefined;
+      items.push({
+        id: d.id,
+        recipeId: data.recipeId,
+        authorId: data.authorId,
+        text: data.text,
+        createdAt: toISOString(data.createdAt),
+        author,
+      });
+    }
+    return { items, nextCursor, hasMore };
   }
 
   async rate(recipeId: string, userId: string, stars: number): Promise<RateResponseDto> {
