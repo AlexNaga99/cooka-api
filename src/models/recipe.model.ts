@@ -1,0 +1,19 @@
+import { User } from './user.model';
+
+export interface Recipe {
+  id: string;
+  authorId: string;
+  title: string;
+  description: string;
+  mediaUrls: string[];
+  videoUrl?: string | null;
+  categories: string[];
+  tags: string[];
+  isVariation: boolean;
+  parentRecipeId?: string | null;
+  ratingAvg: number;
+  ratingsCount: number;
+  popularityScore?: number;
+  createdAt: Date;
+  author?: User;
+}

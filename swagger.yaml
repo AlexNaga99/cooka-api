@@ -1,0 +1,732 @@
+openapi: 3.0.0
+paths:
+  /api/auth/verify:
+    post:
+      operationId: AuthController_verify
+      summary: Verificar token Firebase
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyRequestDto"
+      responses:
+        "200":
+          description: Token válido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthVerifyResponseDto"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: &a1
+        - Auth
+  /api/auth/refresh:
+    post:
+      operationId: AuthController_refresh
+      summary: Renovar ID Token usando Refresh Token
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRefreshRequestDto"
+      responses:
+        "200":
+          description: Novo ID Token e opcionalmente novo Refresh Token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRefreshResponseDto"
+        "401":
+          description: Refresh token inválido ou expirado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a1
+  /api/recipes:
+    post:
+      operationId: RecipesController_create
+      summary: Criar receita
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipeCreateRequestDto"
+      responses:
+        "201":
+          description: Receita criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeResponseDto"
+        "400":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: &a2
+        - Recipes
+      security:
+        - bearer: []
+  /api/recipes/feed:
+    get:
+      operationId: RecipesController_feed
+      summary: Feed de receitas
+      parameters:
+        - name: limit
+          required: false
+          in: query
+          schema:
+            type: number
+        - name: cursor
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeFeedResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a2
+      security:
+        - bearer: []
+  /api/recipes/{id}:
+    get:
+      operationId: RecipesController_getById
+      summary: Obter receita por ID
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a2
+    post:
+      operationId: RecipesController_createVariation
+      summary: Criar variação da receita
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipeVariationRequestDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeResponseDto"
+        "400":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a2
+      security:
+        - bearer: []
+  /api/recipes/{id}/rate:
+    post:
+      operationId: RecipesController_rate
+      summary: Avaliar receita (1–5 estrelas)
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateRequestDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateResponseDto"
+        "400":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a2
+      security:
+        - bearer: []
+  /api/recipes/{id}/comment:
+    post:
+      operationId: RecipesController_comment
+      summary: Comentar receita
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentRequestDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponseDto"
+        "400":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a2
+      security:
+        - bearer: []
+  /api/users/{id}/profile:
+    get:
+      operationId: SocialController_getProfile
+      summary: Perfil do usuário
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: ID do usuário
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: &a3
+        - Social
+  /api/follow/{userId}:
+    post:
+      operationId: SocialController_follow
+      summary: Seguir usuário
+      parameters:
+        - name: userId
+          required: true
+          in: path
+          description: ID do usuário a seguir
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowResponseDto"
+        "400":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+  /api/search:
+    get:
+      operationId: SearchController_search
+      summary: Buscar receitas e usuários
+      parameters:
+        - name: query
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: filters
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: limit
+          required: false
+          in: query
+          schema:
+            type: number
+        - name: cursor
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags:
+        - Search
+      security:
+        - bearer: []
+info:
+  title: Cooka API
+  description: Backend API do Cooka – autenticação, receitas, interações sociais,
+    rankings e validação de monetização.
+  version: 1.0.0
+  contact: {}
+tags:
+  - name: Auth
+    description: Autenticação (Firebase)
+  - name: Recipes
+    description: Receitas
+  - name: Ratings
+    description: Avaliações e comentários
+  - name: Social
+    description: Seguidores e perfil
+  - name: Search
+    description: Busca
+servers: []
+components:
+  securitySchemes:
+    bearerAuth:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+      description: Firebase ID Token
+  schemas:
+    AuthVerifyRequestDto:
+      type: object
+      properties:
+        idToken:
+          type: string
+          description: Firebase ID Token
+      required:
+        - idToken
+    UserResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        photoUrl:
+          type: object
+          nullable: true
+        followersCount:
+          type: number
+        followingCount:
+          type: number
+        popularityScore:
+          type: number
+        createdAt:
+          type: string
+        isAdsFree:
+          type: boolean
+          default: false
+      required:
+        - id
+        - name
+        - email
+        - photoUrl
+        - followersCount
+        - followingCount
+        - popularityScore
+        - createdAt
+    AuthVerifyResponseDto:
+      type: object
+      properties:
+        uid:
+          type: string
+          description: Firebase UID
+        user:
+          $ref: "#/components/schemas/UserResponseDto"
+      required:
+        - uid
+        - user
+    ErrorResponseDto:
+      type: object
+      properties:
+        statusCode:
+          type: number
+        message:
+          type: string
+        error:
+          type: object
+          nullable: true
+      required:
+        - statusCode
+        - message
+    AuthRefreshRequestDto:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          description: Firebase Refresh Token
+      required:
+        - refreshToken
+    AuthRefreshResponseDto:
+      type: object
+      properties:
+        idToken:
+          type: string
+          description: Novo ID Token (JWT)
+        refreshToken:
+          type: string
+          description: Refresh Token (novo, se o Firebase rotacionar)
+        expiresIn:
+          type: number
+          description: Expiração do ID Token em segundos
+      required:
+        - idToken
+        - expiresIn
+    RecipeCreateRequestDto:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        videoUrl:
+          type: object
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+        - title
+        - description
+    RecipeResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        authorId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        videoUrl:
+          type: object
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        isVariation:
+          type: boolean
+          default: false
+        parentRecipeId:
+          type: object
+          nullable: true
+        ratingAvg:
+          type: number
+        ratingsCount:
+          type: number
+        createdAt:
+          type: string
+        author:
+          $ref: "#/components/schemas/UserResponseDto"
+      required:
+        - id
+        - authorId
+        - title
+        - description
+        - mediaUrls
+        - categories
+        - tags
+        - isVariation
+        - ratingAvg
+        - ratingsCount
+        - createdAt
+    RecipeFeedResponseDto:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeResponseDto"
+        nextCursor:
+          type: object
+          nullable: true
+        hasMore:
+          type: boolean
+      required:
+        - items
+        - hasMore
+    RecipeVariationRequestDto:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        videoUrl:
+          type: object
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+        - title
+        - description
+    RateRequestDto:
+      type: object
+      properties:
+        stars:
+          type: number
+          minimum: 1
+          maximum: 5
+          description: Estrelas de 1 a 5
+      required:
+        - stars
+    RateResponseDto:
+      type: object
+      properties:
+        recipeId:
+          type: string
+        userId:
+          type: string
+        stars:
+          type: number
+        ratingAvg:
+          type: number
+        ratingsCount:
+          type: number
+      required:
+        - recipeId
+        - userId
+        - stars
+        - ratingAvg
+        - ratingsCount
+    CommentRequestDto:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+        - text
+    CommentResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        recipeId:
+          type: string
+        authorId:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+        author:
+          $ref: "#/components/schemas/UserResponseDto"
+      required:
+        - id
+        - recipeId
+        - authorId
+        - text
+        - createdAt
+    UserProfileResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        photoUrl:
+          type: object
+          nullable: true
+        followersCount:
+          type: number
+        followingCount:
+          type: number
+        popularityScore:
+          type: number
+        createdAt:
+          type: string
+        isAdsFree:
+          type: boolean
+          default: false
+      required:
+        - id
+        - name
+        - email
+        - photoUrl
+        - followersCount
+        - followingCount
+        - popularityScore
+        - createdAt
+    FollowResponseDto:
+      type: object
+      properties:
+        followerId:
+          type: string
+        followingId:
+          type: string
+        success:
+          type: boolean
+      required:
+        - followerId
+        - followingId
+        - success
+    SearchResponseDto:
+      type: object
+      properties:
+        recipes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeResponseDto"
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProfileResponseDto"
+        nextCursor:
+          type: object
+          nullable: true
+        hasMore:
+          type: boolean
+      required:
+        - recipes
+        - users
+        - hasMore

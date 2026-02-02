@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Firebase Service Account – NUNCA commitar
+firebase-service-account.json
+*-service-account*.json
+*serviceAccount*.json
