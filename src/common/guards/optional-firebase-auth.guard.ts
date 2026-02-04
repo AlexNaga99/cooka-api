@@ -3,10 +3,17 @@ import {
   CanActivate,
   ExecutionContext,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { getFirebaseAuth } from '../../config/firebase.config';
 
 @Injectable()
 export class OptionalFirebaseAuthGuard implements CanActivate {
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
@@ -24,7 +31,18 @@ export class OptionalFirebaseAuthGuard implements CanActivate {
         picture: decoded.picture,
       };
     } catch {
-      // token inválido; segue sem user
+      try {
+        const secret = this.configService.get<string>('jwt.secret');
+        const payload = this.jwtService.verify<{ sub: string }>(token, { secret });
+        request.user = {
+          uid: payload.sub,
+          email: undefined,
+          name: undefined,
+          picture: undefined,
+        };
+      } catch {
+        // token inválido; segue sem user
+      }
     }
     return true;
   }

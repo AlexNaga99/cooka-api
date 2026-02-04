@@ -34,6 +34,12 @@ export class AuthVerifyResponseDto {
   uid: string;
   @ApiProperty({ type: UserResponseDto })
   user: UserResponseDto;
+  @ApiProperty({ description: 'ID Token (para guardar e usar no Authorization)', required: false })
+  idToken?: string;
+  @ApiProperty({ description: 'Refresh token (guardar e usar no POST /auth/refresh em 401)', required: false })
+  refreshToken?: string;
+  @ApiProperty({ description: 'Expiração do ID Token em segundos', required: false })
+  expiresIn?: number;
 }
 
 export class AuthRefreshRequestDto {

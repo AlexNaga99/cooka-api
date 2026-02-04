@@ -749,6 +749,15 @@ components:
           description: Firebase UID
         user:
           $ref: "#/components/schemas/UserResponseDto"
+        idToken:
+          type: string
+          description: ID Token (para guardar e usar no Authorization)
+        refreshToken:
+          type: string
+          description: Refresh token (guardar e usar no POST /auth/refresh em 401)
+        expiresIn:
+          type: number
+          description: Expiração do ID Token em segundos
       required:
         - uid
         - user

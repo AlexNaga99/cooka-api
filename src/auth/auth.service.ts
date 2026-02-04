@@ -1,19 +1,29 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { randomBytes } from 'crypto';
+import { Timestamp } from 'firebase-admin/firestore';
 import { getFirebaseAuth, getFirestoreDb } from '../config/firebase.config';
 import { User } from '../models';
-import type { UserResponseDto } from './dto/auth-verify.dto';
-import type { AuthRefreshResponseDto } from './dto/auth-verify.dto';
+import type {
+  AuthRefreshResponseDto,
+  AuthVerifyResponseDto,
+  UserResponseDto,
+} from './dto/auth-verify.dto';
 
-const FIREBASE_SECURE_TOKEN_URL = 'https://securetoken.googleapis.com/v1/token';
+const BACKEND_REFRESH_TOKEN_PREFIX = 'ct_';
+const REFRESH_TOKENS_COLLECTION = 'refresh_tokens';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
+  ) {}
 
-  async verifyToken(idToken: string): Promise<{ uid: string; user: UserResponseDto }> {
+  async verifyToken(idToken: string): Promise<AuthVerifyResponseDto> {
     const auth = getFirebaseAuth();
-    let decoded;
+    let decoded: { uid: string; exp?: number; name?: string; email?: string; picture?: string };
     try {
       decoded = await auth.verifyIdToken(idToken);
     } catch {
@@ -39,7 +49,28 @@ export class AuthService {
         isAdsFree: false,
       };
     }
-    return { uid, user };
+
+    const expiresIn = decoded.exp
+      ? Math.max(0, decoded.exp - Math.floor(Date.now() / 1000))
+      : 3600;
+    const refreshToken = this.createBackendRefreshToken(uid, db);
+    return {
+      uid,
+      user,
+      idToken,
+      refreshToken,
+      expiresIn,
+    };
+  }
+
+  private createBackendRefreshToken(uid: string, db: ReturnType<typeof getFirestoreDb>): string {
+    const token = BACKEND_REFRESH_TOKEN_PREFIX + randomBytes(32).toString('hex');
+    const expiresDays = this.configService.get<number>('refreshToken.expiresDays') ?? 30;
+    const expiresAt = Timestamp.fromDate(
+      new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000),
+    );
+    db.collection(REFRESH_TOKENS_COLLECTION).doc(token).set({ uid, expiresAt });
+    return token;
   }
 
   toUserResponse(data: User & { createdAt?: { toDate?: () => Date } }, id: string): UserResponseDto {
@@ -67,41 +98,39 @@ export class AuthService {
   }
 
   async refreshToken(refreshToken: string): Promise<AuthRefreshResponseDto> {
-    const apiKey = this.configService.get<string>('firebase.apiKey');
-    if (!apiKey) {
-      throw new UnauthorizedException('Refresh token não configurado no servidor');
+    if (!refreshToken.startsWith(BACKEND_REFRESH_TOKEN_PREFIX)) {
+      throw new UnauthorizedException('Refresh token inválido (use o token retornado pelo POST /auth/verify)');
     }
-    const url = `${FIREBASE_SECURE_TOKEN_URL}?key=${apiKey}`;
-    const body = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    }).toString();
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new UnauthorizedException(
-        err?.error?.message ?? 'Refresh token inválido ou expirado',
-      );
-    }
-
-    const data = (await res.json()) as {
-      id_token: string;
-      refresh_token?: string;
-      expires_in: string;
-    };
-    const result: AuthRefreshResponseDto = {
-      idToken: data.id_token,
-      expiresIn: parseInt(data.expires_in ?? '3600', 10),
-    };
-    if (data.refresh_token) {
-      result.refreshToken = data.refresh_token;
-    }
-    return result;
+    return this.refreshWithBackendToken(refreshToken);
   }
+
+  private async refreshWithBackendToken(token: string): Promise<AuthRefreshResponseDto> {
+    const db = getFirestoreDb();
+    const doc = await db.collection(REFRESH_TOKENS_COLLECTION).doc(token).get();
+    if (!doc.exists) {
+      throw new UnauthorizedException('Refresh token inválido ou expirado');
+    }
+    const data = doc.data() as { uid: string; expiresAt: { toDate: () => Date } };
+    const expiresAt = data.expiresAt?.toDate?.() ?? new Date(0);
+    if (expiresAt <= new Date()) {
+      await db.collection(REFRESH_TOKENS_COLLECTION).doc(token).delete();
+      throw new UnauthorizedException('Refresh token inválido ou expirado');
+    }
+    const uid = data.uid;
+    const accessToken = this.jwtService.sign(
+      { sub: uid },
+      { expiresIn: 3600 },
+    );
+    const expiresInSeconds = 3600;
+
+    const newRefreshToken = this.createBackendRefreshToken(uid, db);
+    await db.collection(REFRESH_TOKENS_COLLECTION).doc(token).delete();
+
+    return {
+      idToken: accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: expiresInSeconds,
+    };
+  }
+
 }
