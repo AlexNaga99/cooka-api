@@ -1329,7 +1329,18 @@
             "type": "string"
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "(opcional) Mantido para compatibilidade; preferir ingredients + preparationSteps"
+          },
+          "ingredients": {
+            "type": "object",
+            "description": "Texto dos ingredientes (formato livre)",
+            "nullable": true
+          },
+          "preparationSteps": {
+            "type": "object",
+            "description": "Modo de preparo / passo a passo (formato livre)",
+            "nullable": true
           },
           "mediaUrls": {
             "type": "array",
@@ -1363,8 +1374,7 @@
           }
         },
         "required": [
-          "title",
-          "description"
+          "title"
         ]
       },
       "RecipeResponseDto": {
@@ -1381,6 +1391,16 @@
           },
           "description": {
             "type": "string"
+          },
+          "ingredients": {
+            "type": "object",
+            "description": "Texto dos ingredientes (formato livre)",
+            "nullable": true
+          },
+          "preparationSteps": {
+            "type": "object",
+            "description": "Modo de preparo / passo a passo (formato livre)",
+            "nullable": true
           },
           "mediaUrls": {
             "type": "array",
@@ -1547,6 +1567,16 @@
           "description": {
             "type": "string"
           },
+          "ingredients": {
+            "type": "object",
+            "description": "Texto dos ingredientes (formato livre)",
+            "nullable": true
+          },
+          "preparationSteps": {
+            "type": "object",
+            "description": "Modo de preparo / passo a passo (formato livre)",
+            "nullable": true
+          },
           "mediaUrls": {
             "type": "array",
             "items": {
@@ -1585,7 +1615,18 @@
             "type": "string"
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "(opcional) Mantido para compatibilidade; preferir ingredients + preparationSteps"
+          },
+          "ingredients": {
+            "type": "object",
+            "description": "Texto dos ingredientes (formato livre)",
+            "nullable": true
+          },
+          "preparationSteps": {
+            "type": "object",
+            "description": "Modo de preparo / passo a passo (formato livre)",
+            "nullable": true
           },
           "mediaUrls": {
             "type": "array",
@@ -1619,8 +1660,7 @@
           }
         },
         "required": [
-          "title",
-          "description"
+          "title"
         ]
       },
       "RateRequestDto": {

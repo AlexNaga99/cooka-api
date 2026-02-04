@@ -804,6 +804,16 @@ components:
           type: string
         description:
           type: string
+          description: (opcional) Mantido para compatibilidade; preferir ingredients +
+            preparationSteps
+        ingredients:
+          type: object
+          description: Texto dos ingredientes (formato livre)
+          nullable: true
+        preparationSteps:
+          type: object
+          description: Modo de preparo / passo a passo (formato livre)
+          nullable: true
         mediaUrls:
           type: array
           items:
@@ -827,7 +837,6 @@ components:
           default: published
       required:
         - title
-        - description
     RecipeResponseDto:
       type: object
       properties:
@@ -839,6 +848,14 @@ components:
           type: string
         description:
           type: string
+        ingredients:
+          type: object
+          description: Texto dos ingredientes (formato livre)
+          nullable: true
+        preparationSteps:
+          type: object
+          description: Modo de preparo / passo a passo (formato livre)
+          nullable: true
         mediaUrls:
           type: array
           items:
@@ -957,6 +974,14 @@ components:
           type: string
         description:
           type: string
+        ingredients:
+          type: object
+          description: Texto dos ingredientes (formato livre)
+          nullable: true
+        preparationSteps:
+          type: object
+          description: Modo de preparo / passo a passo (formato livre)
+          nullable: true
         mediaUrls:
           type: array
           items:
@@ -984,6 +1009,16 @@ components:
           type: string
         description:
           type: string
+          description: (opcional) Mantido para compatibilidade; preferir ingredients +
+            preparationSteps
+        ingredients:
+          type: object
+          description: Texto dos ingredientes (formato livre)
+          nullable: true
+        preparationSteps:
+          type: object
+          description: Modo de preparo / passo a passo (formato livre)
+          nullable: true
         mediaUrls:
           type: array
           items:
@@ -1005,7 +1040,6 @@ components:
           default: published
       required:
         - title
-        - description
     RateRequestDto:
       type: object
       properties:

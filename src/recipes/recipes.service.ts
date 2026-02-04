@@ -30,10 +30,16 @@ export class RecipesService {
     const status = dto.status ?? DEFAULT_STATUS;
     const ref = this.db.collection('recipes').doc();
     const now = new Date();
+    const ingredients = dto.ingredients ?? null;
+    const preparationSteps = dto.preparationSteps ?? null;
+    const description =
+      dto.description ?? ([ingredients, preparationSteps].filter(Boolean).join('\n\n') || '');
     const data = {
       authorId,
       title: dto.title,
-      description: dto.description,
+      description,
+      ingredients,
+      preparationSteps,
       mediaUrls: dto.mediaUrls ?? [],
       videoUrl: dto.videoUrl ?? null,
       categories: dto.categories ?? [],
@@ -145,6 +151,8 @@ export class RecipesService {
     const updates: Record<string, unknown> = {};
     if (dto.title !== undefined) updates.title = dto.title;
     if (dto.description !== undefined) updates.description = dto.description;
+    if (dto.ingredients !== undefined) updates.ingredients = dto.ingredients;
+    if (dto.preparationSteps !== undefined) updates.preparationSteps = dto.preparationSteps;
     if (dto.mediaUrls !== undefined) updates.mediaUrls = dto.mediaUrls;
     if (dto.videoUrl !== undefined) updates.videoUrl = dto.videoUrl;
     if (dto.categories !== undefined) updates.categories = dto.categories;
@@ -181,10 +189,16 @@ export class RecipesService {
     }
     const ref = this.db.collection('recipes').doc();
     const now = new Date();
+    const ingredients = dto.ingredients ?? null;
+    const preparationSteps = dto.preparationSteps ?? null;
+    const description =
+      dto.description ?? ([ingredients, preparationSteps].filter(Boolean).join('\n\n') || '');
     const data = {
       authorId,
       title: dto.title,
-      description: dto.description,
+      description,
+      ingredients,
+      preparationSteps,
       mediaUrls: dto.mediaUrls ?? [],
       videoUrl: dto.videoUrl ?? null,
       categories: dto.categories ?? [],
@@ -216,7 +230,9 @@ export class RecipesService {
       id: recipe.id,
       authorId: recipe.authorId,
       title: recipe.title,
-      description: recipe.description,
+      description: recipe.description ?? '',
+      ingredients: recipe.ingredients ?? null,
+      preparationSteps: recipe.preparationSteps ?? null,
       mediaUrls: recipe.mediaUrls ?? [],
       videoUrl: recipe.videoUrl ?? null,
       categories: recipe.categories ?? [],

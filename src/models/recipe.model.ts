@@ -7,6 +7,10 @@ export interface Recipe {
   authorId: string;
   title: string;
   description: string;
+  /** Texto dos ingredientes (formato livre). */
+  ingredients?: string | null;
+  /** Modo de preparo / passo a passo (formato livre). */
+  preparationSteps?: string | null;
   mediaUrls: string[];
   videoUrl?: string | null;
   categories: string[];

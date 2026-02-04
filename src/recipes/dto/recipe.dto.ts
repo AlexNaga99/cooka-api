@@ -6,9 +6,26 @@ export class RecipeCreateRequestDto {
   @ApiProperty()
   @IsString()
   title: string;
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: '(opcional) Mantido para compatibilidade; preferir ingredients + preparationSteps',
+  })
+  @IsOptional()
   @IsString()
-  description: string;
+  description?: string;
+  @ApiPropertyOptional({
+    description: 'Texto dos ingredientes (formato livre)',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  ingredients?: string | null;
+  @ApiPropertyOptional({
+    description: 'Modo de preparo / passo a passo (formato livre)',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  preparationSteps?: string | null;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
@@ -43,6 +60,20 @@ export class RecipeUpdateRequestDto {
   @IsOptional()
   @IsString()
   description?: string;
+  @ApiPropertyOptional({
+    description: 'Texto dos ingredientes (formato livre)',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  ingredients?: string | null;
+  @ApiPropertyOptional({
+    description: 'Modo de preparo / passo a passo (formato livre)',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  preparationSteps?: string | null;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
@@ -79,6 +110,16 @@ export class RecipeResponseDto {
   title: string;
   @ApiProperty()
   description: string;
+  @ApiPropertyOptional({
+    description: 'Texto dos ingredientes (formato livre)',
+    nullable: true,
+  })
+  ingredients?: string | null;
+  @ApiPropertyOptional({
+    description: 'Modo de preparo / passo a passo (formato livre)',
+    nullable: true,
+  })
+  preparationSteps?: string | null;
   @ApiProperty({ type: [String] })
   mediaUrls: string[];
   @ApiPropertyOptional({ nullable: true })
