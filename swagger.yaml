@@ -340,7 +340,7 @@ paths:
   /api/recipes/{id}/comment:
     post:
       operationId: RecipesController_comment
-      summary: Comentar receita
+      summary: Comentar receita ou responder comentário
       parameters:
         - name: id
           required: true
@@ -916,6 +916,18 @@ components:
           type: string
         author:
           $ref: "#/components/schemas/UserResponseDto"
+        parentId:
+          type: string
+          description: ID do comentário pai quando for resposta
+          nullable: true
+        replies:
+          description: Respostas ao comentário (só em comentário raiz)
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentResponseDto"
+        repliesCount:
+          type: number
+          description: Quantidade de respostas
       required:
         - id
         - recipeId
@@ -930,8 +942,9 @@ components:
           items:
             $ref: "#/components/schemas/CommentResponseDto"
         nextCursor:
-          type: object
+          type: string
           nullable: true
+          description: Cursor para próxima página
         hasMore:
           type: boolean
       required:
@@ -1027,6 +1040,10 @@ components:
       properties:
         text:
           type: string
+          description: Texto do comentário
+        parentId:
+          type: string
+          description: ID do comentário raiz quando for resposta
       required:
         - text
     UserProfileResponseDto:

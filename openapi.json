@@ -578,7 +578,7 @@
     "/api/recipes/{id}/comment": {
       "post": {
         "operationId": "RecipesController_comment",
-        "summary": "Comentar receita",
+        "summary": "Comentar receita ou responder comentário",
         "parameters": [
           {
             "name": "id",
@@ -1489,6 +1489,22 @@
           },
           "author": {
             "$ref": "#/components/schemas/UserResponseDto"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "ID do comentário pai quando for resposta",
+            "nullable": true
+          },
+          "replies": {
+            "description": "Respostas ao comentário (só em comentário raiz)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommentResponseDto"
+            }
+          },
+          "repliesCount": {
+            "type": "number",
+            "description": "Quantidade de respostas"
           }
         },
         "required": [
@@ -1509,8 +1525,9 @@
             }
           },
           "nextCursor": {
-            "type": "object",
-            "nullable": true
+            "type": "string",
+            "nullable": true,
+            "description": "Cursor para próxima página"
           },
           "hasMore": {
             "type": "boolean"
@@ -1651,7 +1668,12 @@
         "type": "object",
         "properties": {
           "text": {
-            "type": "string"
+            "type": "string",
+            "description": "Texto do comentário"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "ID do comentário raiz quando for resposta"
           }
         },
         "required": [

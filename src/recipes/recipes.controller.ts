@@ -181,7 +181,7 @@ export class RecipesController {
   @Post(':id/comment')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Comentar receita' })
+  @ApiOperation({ summary: 'Comentar receita ou responder comentário' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 201, type: CommentResponseDto })
   @ApiResponse({ status: 400, type: ErrorResponseDto })
@@ -192,6 +192,6 @@ export class RecipesController {
     @CurrentUser() user: FirebaseUser,
     @Body() dto: CommentRequestDto,
   ): Promise<CommentResponseDto> {
-    return this.ratingsService.comment(id, user.uid, dto.text);
+    return this.ratingsService.comment(id, user.uid, dto.text, dto.parentId ?? null);
   }
 }

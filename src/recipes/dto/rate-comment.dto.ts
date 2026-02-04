@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, Min, Max, IsString, IsNotEmpty } from 'class-validator';
+import { IsInt, Min, Max, IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import { UserResponseDto } from '../../auth/dto/auth-verify.dto';
 
 export class RateRequestDto {
@@ -24,10 +24,18 @@ export class RateResponseDto {
 }
 
 export class CommentRequestDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Texto do comentário' })
   @IsString()
   @IsNotEmpty()
   text: string;
+
+  @ApiPropertyOptional({
+    description: 'ID do comentário raiz quando for resposta',
+    type: String,
+  })
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }
 
 export class CommentResponseDto {
@@ -43,12 +51,29 @@ export class CommentResponseDto {
   createdAt: string;
   @ApiPropertyOptional({ type: () => UserResponseDto })
   author?: UserResponseDto;
+  @ApiPropertyOptional({
+    description: 'ID do comentário pai quando for resposta',
+    type: String,
+    nullable: true,
+  })
+  parentId?: string | null;
+  @ApiPropertyOptional({
+    description: 'Respostas ao comentário (só em comentário raiz)',
+    type: () => CommentResponseDto,
+    isArray: true,
+  })
+  replies?: CommentResponseDto[];
+  @ApiPropertyOptional({
+    description: 'Quantidade de respostas',
+    type: Number,
+  })
+  repliesCount?: number;
 }
 
 export class CommentListResponseDto {
   @ApiProperty({ type: [CommentResponseDto] })
   items: CommentResponseDto[];
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Cursor para próxima página' })
   nextCursor?: string | null;
   @ApiProperty()
   hasMore: boolean;
