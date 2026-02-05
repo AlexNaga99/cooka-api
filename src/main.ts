@@ -46,6 +46,8 @@ async function bootstrap() {
     .addTag('Ratings', 'Avaliações e comentários')
     .addTag('Social', 'Seguidores e perfil')
     .addTag('Search', 'Busca')
+    .addTag('Categories', 'Categorias (id + labels por idioma)')
+    .addTag('Tags', 'Tags (id + labels por idioma)')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

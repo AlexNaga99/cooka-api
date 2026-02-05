@@ -13,7 +13,9 @@ export interface Recipe {
   preparationSteps?: string | null;
   mediaUrls: string[];
   videoUrl?: string | null;
+  /** Ids de categorias (GET /api/categories). */
   categories: string[];
+  /** Ids de tags (GET /api/tags). */
   tags: string[];
   isVariation: boolean;
   parentRecipeId?: string | null;

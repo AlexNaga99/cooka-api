@@ -381,6 +381,38 @@ paths:
       tags: *a2
       security:
         - bearer: []
+  /api/categories:
+    get:
+      operationId: CategoriesController_findAll
+      summary: Listar categorias (id + labels por idioma)
+      parameters: []
+      responses:
+        "200":
+          description: Lista de categorias
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryTagItemDto"
+      tags:
+        - Categories
+  /api/tags:
+    get:
+      operationId: TagsController_findAll
+      summary: Listar tags (id + labels por idioma)
+      parameters: []
+      responses:
+        "200":
+          description: Lista de tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryTagItemDto"
+      tags:
+        - Tags
   /api/account:
     get:
       operationId: SocialController_getAccount
@@ -639,13 +671,21 @@ paths:
       summary: Buscar receitas e usuários
       parameters:
         - name: query
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: filters
           required: false
           in: query
+          description: Parte do nome da receita (ou nome do usuário)
+          schema:
+            type: string
+        - name: categoryIds
+          required: false
+          in: query
+          description: "Ids de categorias separados por vírgula (ex.: dessert,main)"
+          schema:
+            type: string
+        - name: tagIds
+          required: false
+          in: query
+          description: "Ids de tags separados por vírgula (ex.: vegan,chocolate)"
           schema:
             type: string
         - name: limit
@@ -692,6 +732,10 @@ tags:
     description: Seguidores e perfil
   - name: Search
     description: Busca
+  - name: Categories
+    description: Categorias (id + labels por idioma)
+  - name: Tags
+    description: Tags (id + labels por idioma)
 servers: []
 components:
   securitySchemes:
@@ -822,10 +866,12 @@ components:
           type: object
           nullable: true
         categories:
+          description: Ids de categorias retornados por GET /api/categories
           type: array
           items:
             type: string
         tags:
+          description: Ids de tags retornados por GET /api/tags
           type: array
           items:
             type: string
@@ -990,10 +1036,12 @@ components:
           type: object
           nullable: true
         categories:
+          description: Ids de categorias retornados por GET /api/categories
           type: array
           items:
             type: string
         tags:
+          description: Ids de tags retornados por GET /api/tags
           type: array
           items:
             type: string
@@ -1027,10 +1075,12 @@ components:
           type: object
           nullable: true
         categories:
+          description: Ids de categorias retornados por GET /api/categories
           type: array
           items:
             type: string
         tags:
+          description: Ids de tags retornados por GET /api/tags
           type: array
           items:
             type: string
@@ -1080,6 +1130,20 @@ components:
           description: ID do comentário raiz quando for resposta
       required:
         - text
+    CategoryTagItemDto:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identificador estável (slug)
+        en:
+          type: string
+          description: Label em inglês
+        pt-br:
+          type: string
+          description: Label em português Brasil
+      required:
+        - id
     UserProfileResponseDto:
       type: object
       properties:

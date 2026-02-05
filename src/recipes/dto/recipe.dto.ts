@@ -35,12 +35,18 @@ export class RecipeCreateRequestDto {
   @IsOptional()
   @IsUrl()
   videoUrl?: string | null;
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Ids de categorias retornados por GET /api/categories',
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   categories?: string[];
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Ids de tags retornados por GET /api/tags',
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -83,12 +89,18 @@ export class RecipeUpdateRequestDto {
   @IsOptional()
   @IsUrl()
   videoUrl?: string | null;
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Ids de categorias retornados por GET /api/categories',
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   categories?: string[];
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Ids de tags retornados por GET /api/tags',
+  })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

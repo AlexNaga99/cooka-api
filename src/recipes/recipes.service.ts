@@ -8,6 +8,7 @@ import { getFirestoreDb } from '../config/firebase.config';
 import { Recipe, User } from '../models';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
+import { CategoriesTagsService } from '../categories-tags/categories-tags.service';
 import type {
   RecipeCreateRequestDto,
   RecipeResponseDto,
@@ -20,13 +21,39 @@ const DEFAULT_STATUS = 'published';
 
 @Injectable()
 export class RecipesService {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly categoriesTagsService: CategoriesTagsService,
+  ) {}
 
   private get db() {
     return getFirestoreDb();
   }
 
+  private async validateCategoryAndTagIds(
+    categoryIds?: string[],
+    tagIds?: string[],
+  ): Promise<void> {
+    if (categoryIds?.length) {
+      const valid = await this.categoriesTagsService.getCategories();
+      const validIds = new Set(valid.map((c) => c.id));
+      const invalid = categoryIds.filter((id) => !validIds.has(id));
+      if (invalid.length) {
+        throw new BadRequestException(`Categorias inválidas: ${invalid.join(', ')}`);
+      }
+    }
+    if (tagIds?.length) {
+      const valid = await this.categoriesTagsService.getTags();
+      const validIds = new Set(valid.map((t) => t.id));
+      const invalid = tagIds.filter((id) => !validIds.has(id));
+      if (invalid.length) {
+        throw new BadRequestException(`Tags inválidas: ${invalid.join(', ')}`);
+      }
+    }
+  }
+
   async create(authorId: string, dto: RecipeCreateRequestDto): Promise<RecipeResponseDto> {
+    await this.validateCategoryAndTagIds(dto.categories, dto.tags);
     const status = dto.status ?? DEFAULT_STATUS;
     const ref = this.db.collection('recipes').doc();
     const now = new Date();
@@ -37,6 +64,7 @@ export class RecipesService {
     const data = {
       authorId,
       title: dto.title,
+      titleLower: dto.title.trim().toLowerCase(),
       description,
       ingredients,
       preparationSteps,
@@ -148,8 +176,12 @@ export class RecipesService {
     if (data.authorId !== uid) {
       throw new ForbiddenException('Apenas o autor pode editar esta receita');
     }
+    await this.validateCategoryAndTagIds(dto.categories, dto.tags);
     const updates: Record<string, unknown> = {};
-    if (dto.title !== undefined) updates.title = dto.title;
+    if (dto.title !== undefined) {
+      updates.title = dto.title;
+      updates.titleLower = dto.title.trim().toLowerCase();
+    }
     if (dto.description !== undefined) updates.description = dto.description;
     if (dto.ingredients !== undefined) updates.ingredients = dto.ingredients;
     if (dto.preparationSteps !== undefined) updates.preparationSteps = dto.preparationSteps;
@@ -187,6 +219,7 @@ export class RecipesService {
     if ((parentData.status ?? DEFAULT_STATUS) === 'draft') {
       throw new BadRequestException('Não é possível criar variação de rascunho');
     }
+    await this.validateCategoryAndTagIds(dto.categories, dto.tags);
     const ref = this.db.collection('recipes').doc();
     const now = new Date();
     const ingredients = dto.ingredients ?? null;
@@ -196,6 +229,7 @@ export class RecipesService {
     const data = {
       authorId,
       title: dto.title,
+      titleLower: dto.title.trim().toLowerCase(),
       description,
       ingredients,
       preparationSteps,
