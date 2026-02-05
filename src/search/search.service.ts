@@ -44,15 +44,14 @@ export class SearchService {
     const recipes: RecipeResponseDto[] = [];
     let users: UserProfileResponseDto[] = [];
 
+    let recipeNextCursor: string | null = null;
+
     if (hasQuery || hasRecipeFilters) {
-      const recipeResults = await this.searchRecipes(
-        q,
-        limit,
-        categoryIds,
-        tagIds,
-      );
-      this.logger.log(`search() recipeResults.length=${recipeResults.length}`);
+      const { recipes: recipeResults, nextCursor: recipeCursor } =
+        await this.searchRecipes(q, limit, cursor, categoryIds, tagIds);
+      this.logger.log(`search() recipeResults.length=${recipeResults.length} recipeNextCursor=${recipeCursor ?? 'null'}`);
       recipes.push(...recipeResults);
+      recipeNextCursor = recipeCursor;
     }
 
     if (hasQuery) {
@@ -72,11 +71,15 @@ export class SearchService {
     }
 
     const hasMore = recipes.length >= limit || users.length >= limit;
+    const nextCursor =
+      recipes.length >= limit && recipeNextCursor != null
+        ? recipeNextCursor
+        : null;
 
     return {
       recipes,
       users,
-      nextCursor: cursor ?? null,
+      nextCursor,
       hasMore,
     };
   }
@@ -84,19 +87,20 @@ export class SearchService {
   private async searchRecipes(
     q: string,
     limit: number,
+    cursor: string | null,
     categoryIds?: string[],
     tagIds?: string[],
-  ): Promise<RecipeResponseDto[]> {
+  ): Promise<{ recipes: RecipeResponseDto[]; nextCursor: string | null }> {
     const hasQuery = q.length > 0;
     const hasCategoryFilter = (categoryIds?.length ?? 0) > 0;
     const hasTagFilter = (tagIds?.length ?? 0) > 0;
 
     if (!hasQuery && !hasCategoryFilter && !hasTagFilter) {
-      return [];
+      return { recipes: [], nextCursor: null };
     }
 
     if (!hasCategoryFilter && !hasTagFilter) {
-      return this.searchRecipesByTitle(q, limit);
+      return this.searchRecipesByTitle(q, limit, cursor);
     }
 
     const categoryIdsSlice = categoryIds?.slice(0, MAX_ARRAY_CONTAINS_ANY) ?? [];
@@ -104,11 +108,14 @@ export class SearchService {
 
     let docs: QueryDocumentSnapshot[] = [];
 
+    const filterLimit = limit + 1;
+
     if (hasCategoryFilter && hasTagFilter) {
       const byCategory = await this.queryRecipesByFilter(
         'categories',
         categoryIdsSlice,
         limit * 5,
+        cursor,
       );
       docs = byCategory.filter((d) => {
         const data = d.data();
@@ -119,13 +126,15 @@ export class SearchService {
       docs = await this.queryRecipesByFilter(
         'categories',
         categoryIdsSlice,
-        limit + 1,
+        filterLimit,
+        cursor,
       );
     } else {
       docs = await this.queryRecipesByFilter(
         'tags',
         tagIdsSlice,
-        limit + 1,
+        filterLimit,
+        cursor,
       );
     }
 
@@ -136,8 +145,11 @@ export class SearchService {
       });
     }
 
-    const toTake = Math.min(docs.length, limit);
-    const selected = docs.slice(0, toTake);
+    // Com cursor, a query já retornou a página seguinte (startAfter); sem cursor, primeira página
+    const selected = docs.slice(0, limit);
+    const hasMoreInBatch = docs.length > limit;
+    const nextCursor =
+      hasMoreInBatch && selected.length > 0 ? selected[selected.length - 1].id : null;
 
     const results: RecipeResponseDto[] = [];
     for (const d of selected) {
@@ -157,7 +169,7 @@ export class SearchService {
         ),
       );
     }
-    return results;
+    return { recipes: results, nextCursor };
   }
 
   /**
@@ -169,28 +181,37 @@ export class SearchService {
     field: 'categories' | 'tags',
     ids: string[],
     limitCount: number,
+    cursor: string | null = null,
   ): Promise<QueryDocumentSnapshot[]> {
     if (ids.length === 0) return [];
-    const snapshot = await this.db
+    let query = this.db
       .collection('recipes')
       .where('status', '==', DEFAULT_STATUS)
       .where(field, 'array-contains-any', ids)
       .orderBy('createdAt', 'desc')
-      .limit(limitCount)
-      .get();
+      .limit(limitCount);
+
+    if (cursor) {
+      const cursorDoc = await this.db.collection('recipes').doc(cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    const snapshot = await query.get();
     return snapshot.docs;
   }
 
   /**
    * Busca por substring no título (case-insensitive).
    * Busca um lote de receitas publicadas (ordenadas por createdAt) e filtra em memória
-   * onde o título contém q, para suportar "bolo", "chocolate", "lo de choco", etc.
-   * Funciona com ou sem o campo titleLower nas receitas.
+   * onde o título contém q. Suporta paginação via cursor (id do último item da página anterior).
    */
   private async searchRecipesByTitle(
     q: string,
     limit: number,
-  ): Promise<RecipeResponseDto[]> {
+    cursor: string | null,
+  ): Promise<{ recipes: RecipeResponseDto[]; nextCursor: string | null }> {
     const snapshot = await this.db
       .collection('recipes')
       .where('status', '==', DEFAULT_STATUS)
@@ -200,15 +221,8 @@ export class SearchService {
 
     const docs = snapshot.docs;
     this.logger.log(
-      `searchRecipesByTitle() q="${q}" fetched ${docs.length} published recipes (batch max ${SEARCH_TITLE_BATCH_SIZE})`,
+      `searchRecipesByTitle() q="${q}" cursor=${cursor ?? 'null'} fetched ${docs.length} (batch max ${SEARCH_TITLE_BATCH_SIZE})`,
     );
-    if (docs.length > 0) {
-      const sample = docs.slice(0, 5).map((d) => {
-        const data = d.data();
-        return { id: d.id, title: data.title, titleLower: data.titleLower };
-      });
-      this.logger.log(`searchRecipesByTitle() sample docs (first 5): ${JSON.stringify(sample)}`);
-    }
 
     const filtered = docs.filter((d) => {
       const data = d.data();
@@ -218,12 +232,20 @@ export class SearchService {
       return searchable.includes(q);
     });
 
-    this.logger.log(
-      `searchRecipesByTitle() after filter: ${filtered.length} match(es), taking up to ${limit}`,
-    );
+    let startIndex = 0;
+    if (cursor) {
+      const cursorIndex = filtered.findIndex((d) => d.id === cursor);
+      if (cursorIndex >= 0) startIndex = cursorIndex + 1;
+    }
 
-    const toTake = Math.min(filtered.length, limit);
-    const selected = filtered.slice(0, toTake);
+    const selected = filtered.slice(startIndex, startIndex + limit);
+    const hasMore = filtered.length > startIndex + limit;
+    const nextCursor =
+      hasMore && selected.length > 0 ? selected[selected.length - 1].id : null;
+
+    this.logger.log(
+      `searchRecipesByTitle() filtered=${filtered.length} startIndex=${startIndex} selected=${selected.length} nextCursor=${nextCursor ?? 'null'}`,
+    );
 
     const results: RecipeResponseDto[] = [];
     for (const d of selected) {
@@ -243,6 +265,6 @@ export class SearchService {
         ),
       );
     }
-    return results;
+    return { recipes: results, nextCursor };
   }
 }
