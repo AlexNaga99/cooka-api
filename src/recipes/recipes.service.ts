@@ -9,6 +9,7 @@ import { Recipe, User } from '../models';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
 import { CategoriesTagsService } from '../categories-tags/categories-tags.service';
+import { RatingsService } from './ratings.service';
 import type {
   RecipeCreateRequestDto,
   RecipeResponseDto,
@@ -24,6 +25,7 @@ export class RecipesService {
   constructor(
     private readonly authService: AuthService,
     private readonly categoriesTagsService: CategoriesTagsService,
+    private readonly ratingsService: RatingsService,
   ) {}
 
   private get db() {
@@ -93,7 +95,12 @@ export class RecipesService {
       throw new NotFoundException('Receita não encontrada');
     }
     const author = await this.getAuthor(data.authorId);
-    return this.toRecipeResponse({ ...data, id: doc.id, status }, author);
+    let myRating: number | null = null;
+    if (requestUserId) {
+      const rating = await this.ratingsService.getMyRating(id, requestUserId);
+      myRating = rating?.stars ?? null;
+    }
+    return this.toRecipeResponse({ ...data, id: doc.id, status }, author, myRating);
   }
 
   async getFeed(limit: number, cursor?: string | null): Promise<RecipeFeedResponseDto> {
@@ -259,6 +266,7 @@ export class RecipesService {
   toRecipeResponse(
     recipe: Recipe & { id: string; createdAt?: unknown; status?: string },
     author?: UserResponseDto,
+    myRating?: number | null,
   ): RecipeResponseDto {
     return {
       id: recipe.id,
@@ -275,6 +283,7 @@ export class RecipesService {
       parentRecipeId: recipe.parentRecipeId ?? null,
       ratingAvg: recipe.ratingAvg ?? 0,
       ratingsCount: recipe.ratingsCount ?? 0,
+      myRating: myRating ?? null,
       status: (recipe.status as 'published' | 'draft') ?? DEFAULT_STATUS,
       createdAt: toISOString(recipe.createdAt),
       author,

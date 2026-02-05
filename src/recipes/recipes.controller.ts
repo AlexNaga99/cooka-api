@@ -33,6 +33,7 @@ import {
 import {
   RateRequestDto,
   RateResponseDto,
+  MyRatingResponseDto,
   CommentRequestDto,
   CommentResponseDto,
   CommentListResponseDto,
@@ -161,10 +162,28 @@ export class RecipesController {
     return this.recipesService.createVariation(id, user.uid, dto);
   }
 
+  @Get(':id/rate')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Ver se já avaliei esta receita e qual nota' })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, type: MyRatingResponseDto })
+  @ApiResponse({ status: 401, type: ErrorResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async getMyRating(
+    @Param('id') id: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<MyRatingResponseDto> {
+    const rating = await this.ratingsService.getMyRating(id, user.uid);
+    return rating ? { rated: true, stars: rating.stars } : { rated: false };
+  }
+
   @Post(':id/rate')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Avaliar receita (1–5 estrelas)' })
+  @ApiOperation({
+    summary: 'Avaliar ou atualizar avaliação (1–5 estrelas). Uma avaliação por usuário por receita.',
+  })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, type: RateResponseDto })
   @ApiResponse({ status: 400, type: ErrorResponseDto })

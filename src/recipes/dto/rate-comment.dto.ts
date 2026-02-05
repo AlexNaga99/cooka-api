@@ -23,6 +23,18 @@ export class RateResponseDto {
   ratingsCount: number;
 }
 
+/** Resposta do GET "minha avaliação" na receita. */
+export class MyRatingResponseDto {
+  @ApiProperty({ description: 'true se o usuário já avaliou esta receita' })
+  rated: boolean;
+  @ApiPropertyOptional({
+    description: 'Estrelas (1–5) da avaliação do usuário; presente quando rated === true',
+    minimum: 1,
+    maximum: 5,
+  })
+  stars?: number;
+}
+
 export class CommentRequestDto {
   @ApiProperty({ description: 'Texto do comentário' })
   @IsString()

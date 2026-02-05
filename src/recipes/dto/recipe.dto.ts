@@ -148,6 +148,11 @@ export class RecipeResponseDto {
   ratingAvg: number;
   @ApiProperty()
   ratingsCount: number;
+  @ApiPropertyOptional({
+    description: 'Estrelas (1–5) da avaliação do usuário logado nesta receita; só presente quando autenticado',
+    nullable: true,
+  })
+  myRating?: number | null;
   @ApiPropertyOptional({ enum: ['published', 'draft'], default: 'published' })
   status?: 'published' | 'draft';
   @ApiProperty()

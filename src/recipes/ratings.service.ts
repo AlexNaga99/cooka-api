@@ -135,6 +135,32 @@ export class RatingsService {
       : undefined;
   }
 
+  /**
+   * Retorna a avaliação do usuário na receita, se existir.
+   * Um usuário só pode ter uma avaliação por receita (create ou update, nunca duplicar).
+   */
+  async getMyRating(recipeId: string, userId: string): Promise<{ stars: number } | null> {
+    const recipe = await this.db.collection('recipes').doc(recipeId).get();
+    if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
+
+    const snapshot = await this.db
+      .collection('ratings')
+      .where('recipeId', '==', recipeId)
+      .where('userId', '==', userId)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    const data = snapshot.docs[0].data() as { stars: number };
+    return { stars: data.stars };
+  }
+
+  /**
+   * Avalia ou atualiza a avaliação da receita (1–5 estrelas).
+   * Um usuário tem no máximo uma avaliação por receita: se já avaliou, atualiza a nota
+   * em vez de criar outra. A média e o total da receita são recalculados a partir de
+   * todas as avaliações (soma das estrelas / quantidade de avaliadores).
+   */
   async rate(recipeId: string, userId: string, stars: number): Promise<RateResponseDto> {
     const recipeRef = this.db.collection('recipes').doc(recipeId);
     const recipe = await recipeRef.get();

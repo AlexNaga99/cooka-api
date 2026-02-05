@@ -294,9 +294,41 @@ paths:
       security:
         - bearer: []
   /api/recipes/{id}/rate:
+    get:
+      operationId: RecipesController_getMyRating
+      summary: Ver se já avaliei esta receita e qual nota
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyRatingResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a2
+      security:
+        - bearer: []
     post:
       operationId: RecipesController_rate
-      summary: Avaliar receita (1–5 estrelas)
+      summary: Avaliar ou atualizar avaliação (1–5 estrelas). Uma avaliação por
+        usuário por receita.
       parameters:
         - name: id
           required: true
@@ -927,6 +959,11 @@ components:
           type: number
         ratingsCount:
           type: number
+        myRating:
+          type: object
+          description: Estrelas (1–5) da avaliação do usuário logado nesta receita; só
+            presente quando autenticado
+          nullable: true
         status:
           type: string
           enum:
@@ -1090,6 +1127,20 @@ components:
           default: published
       required:
         - title
+    MyRatingResponseDto:
+      type: object
+      properties:
+        rated:
+          type: boolean
+          description: true se o usuário já avaliou esta receita
+        stars:
+          type: number
+          description: Estrelas (1–5) da avaliação do usuário; presente quando rated ===
+            true
+          minimum: 1
+          maximum: 5
+      required:
+        - rated
     RateRequestDto:
       type: object
       properties:
