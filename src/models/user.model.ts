@@ -6,6 +6,8 @@ export interface User {
   followersCount: number;
   followingCount: number;
   popularityScore: number;
+  /** IDs das receitas favoritadas pelo usuário */
+  favoriteRecipeIds?: string[];
   createdAt: Date;
   isAdsFree?: boolean;
   deletedAt?: Date | null;

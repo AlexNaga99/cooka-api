@@ -73,6 +73,38 @@ export class SocialController {
     await this.socialService.deleteAccount(user.uid);
   }
 
+  @Post('account/favorites/:recipeId')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Adicionar receita aos favoritos' })
+  @ApiParam({ name: 'recipeId', description: 'ID da receita' })
+  @ApiResponse({ status: 200, description: 'Favorito adicionado' })
+  @ApiResponse({ status: 401, type: ErrorResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async addFavorite(
+    @Param('recipeId') recipeId: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<{ success: true }> {
+    await this.socialService.addFavorite(user.uid, recipeId);
+    return { success: true };
+  }
+
+  @Delete('account/favorites/:recipeId')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remover receita dos favoritos' })
+  @ApiParam({ name: 'recipeId', description: 'ID da receita' })
+  @ApiResponse({ status: 204, description: 'Favorito removido' })
+  @ApiResponse({ status: 401, type: ErrorResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async removeFavorite(
+    @Param('recipeId') recipeId: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<void> {
+    await this.socialService.removeFavorite(user.uid, recipeId);
+  }
+
   @Get('account/recipes')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()

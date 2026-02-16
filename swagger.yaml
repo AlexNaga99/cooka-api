@@ -116,6 +116,25 @@ paths:
       tags: *a2
       security:
         - bearer: []
+  /api/recipes/by-ids:
+    get:
+      operationId: RecipesController_getByIds
+      summary: "Buscar receitas por um ou vários IDs (ex.: tela de favoritos)"
+      parameters:
+        - name: ids
+          required: true
+          in: query
+          description: "Um id ou vários separados por vírgula (ex.: id1 ou id1,id2,id3)"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeFeedResponseDto"
+      tags: *a2
   /api/recipes/{id}/comments:
     get:
       operationId: RecipesController_getComments
@@ -521,6 +540,63 @@ paths:
       tags: *a3
       security:
         - bearer: []
+  /api/account/favorites/{recipeId}:
+    post:
+      operationId: SocialController_addFavorite
+      summary: Adicionar receita aos favoritos
+      parameters:
+        - name: recipeId
+          required: true
+          in: path
+          description: ID da receita
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Favorito adicionado
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+    delete:
+      operationId: SocialController_removeFavorite
+      summary: Remover receita dos favoritos
+      parameters:
+        - name: recipeId
+          required: true
+          in: path
+          description: ID da receita
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Favorito removido
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
   /api/account/recipes:
     get:
       operationId: SocialController_getMyRecipes
@@ -803,6 +879,11 @@ components:
           type: number
         popularityScore:
           type: number
+        favoriteRecipeIds:
+          description: IDs das receitas favoritadas pelo usuário
+          type: array
+          items:
+            type: string
         createdAt:
           type: string
         isAdsFree:
@@ -1213,6 +1294,11 @@ components:
           type: number
         popularityScore:
           type: number
+        favoriteRecipeIds:
+          description: IDs das receitas favoritadas pelo usuário
+          type: array
+          items:
+            type: string
         createdAt:
           type: string
         isAdsFree:

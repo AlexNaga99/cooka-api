@@ -103,6 +103,29 @@ export class RecipesService {
     return this.toRecipeResponse({ ...data, id: doc.id, status }, author, myRating);
   }
 
+  /**
+   * Busca várias receitas por ID (ex.: tela de favoritos).
+   * Retorna na mesma ordem dos ids; omite receitas não encontradas ou inacessíveis (rascunho de outro).
+   */
+  async getByIds(
+    ids: string[],
+    requestUserId?: string,
+  ): Promise<RecipeResponseDto[]> {
+    const uniqueIds = [...new Set(ids)].filter(Boolean);
+    if (uniqueIds.length === 0) return [];
+
+    const results: RecipeResponseDto[] = [];
+    for (const id of uniqueIds) {
+      try {
+        const recipe = await this.getById(id, requestUserId);
+        results.push(recipe);
+      } catch {
+        // Receita não encontrada ou rascunho de outro: omitir da lista
+      }
+    }
+    return results;
+  }
+
   async getFeed(limit: number, cursor?: string | null): Promise<RecipeFeedResponseDto> {
     let query = this.db
       .collection('recipes')

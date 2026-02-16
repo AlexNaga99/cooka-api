@@ -45,6 +45,7 @@ export class AuthService {
         followersCount: 0,
         followingCount: 0,
         popularityScore: 0,
+        favoriteRecipeIds: [],
         createdAt: new Date().toISOString(),
         isAdsFree: false,
       };
@@ -92,6 +93,7 @@ export class AuthService {
       followersCount: data.followersCount ?? 0,
       followingCount: data.followingCount ?? 0,
       popularityScore: data.popularityScore ?? 0,
+      favoriteRecipeIds: data.favoriteRecipeIds ?? [],
       createdAt: dateStr,
       isAdsFree: data.isAdsFree ?? false,
     };

@@ -82,6 +82,29 @@ export class RecipesController {
     return this.recipesService.getFeed(limitNum, cursor ?? null);
   }
 
+  @Get('by-ids')
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @ApiOperation({ summary: 'Buscar receitas por um ou vários IDs (ex.: tela de favoritos)' })
+  @ApiQuery({
+    name: 'ids',
+    required: true,
+    type: String,
+    description: 'Um id ou vários separados por vírgula (ex.: id1 ou id1,id2,id3)',
+  })
+  @ApiResponse({ status: 200, type: RecipeFeedResponseDto })
+  async getByIds(
+    @Query('ids') idsParam: string,
+    @CurrentUser() user?: FirebaseUser,
+  ): Promise<RecipeFeedResponseDto> {
+    const ids = (idsParam ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 50);
+    const items = await this.recipesService.getByIds(ids, user?.uid);
+    return { items, nextCursor: null, hasMore: false };
+  }
+
   @Get(':id/comments')
   @ApiOperation({ summary: 'Listar comentários da receita' })
   @ApiParam({ name: 'id' })

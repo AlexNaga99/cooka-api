@@ -58,6 +58,7 @@ export class SocialService {
       followersCount: 0,
       followingCount: 0,
       popularityScore: 0,
+      favoriteRecipeIds: [] as string[],
       createdAt: now,
     };
     await this.db.collection('users').doc(uid).set(newUser);
@@ -123,6 +124,42 @@ export class SocialService {
     await batch.commit();
 
     return { followerId, followingId, success: true };
+  }
+
+  /** Adiciona uma receita aos favoritos do usuário (array em users.favoriteRecipeIds). */
+  async addFavorite(uid: string, recipeId: string): Promise<void> {
+    const recipeDoc = await this.db.collection('recipes').doc(recipeId).get();
+    if (!recipeDoc.exists) throw new NotFoundException('Receita não encontrada');
+    const recipeData = recipeDoc.data() as { status?: string; authorId?: string };
+    const status = recipeData.status ?? 'published';
+    if (status === 'draft' && recipeData.authorId !== uid) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+
+    const userRef = this.db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) throw new NotFoundException('Usuário não encontrado');
+    const data = userDoc.data() as { favoriteRecipeIds?: string[]; deletedAt?: unknown };
+    if (this.userHasDeleted(data)) throw new NotFoundException('Usuário não encontrado');
+
+    const current = (data.favoriteRecipeIds ?? []).filter(Boolean);
+    if (current.includes(recipeId)) return;
+    const next = [...current, recipeId];
+    await userRef.update({ favoriteRecipeIds: next });
+  }
+
+  /** Remove uma receita dos favoritos do usuário. */
+  async removeFavorite(uid: string, recipeId: string): Promise<void> {
+    const userRef = this.db.collection('users').doc(uid);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) throw new NotFoundException('Usuário não encontrado');
+    const data = userDoc.data() as { favoriteRecipeIds?: string[]; deletedAt?: unknown };
+    if (this.userHasDeleted(data)) throw new NotFoundException('Usuário não encontrado');
+
+    const current = (data.favoriteRecipeIds ?? []).filter(Boolean);
+    const next = current.filter((id) => id !== recipeId);
+    if (next.length === current.length) return;
+    await userRef.update({ favoriteRecipeIds: next });
   }
 
   async unfollow(followerId: string, followingId: string): Promise<void> {

@@ -23,6 +23,12 @@ export class UserResponseDto {
   followingCount: number;
   @ApiProperty()
   popularityScore: number;
+  @ApiProperty({
+    type: [String],
+    description: 'IDs das receitas favoritadas pelo usuário',
+    required: false,
+  })
+  favoriteRecipeIds?: string[];
   @ApiProperty()
   createdAt: string;
   @ApiProperty({ required: false, default: false })
