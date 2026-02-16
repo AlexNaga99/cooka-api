@@ -63,6 +63,44 @@ export class RecipesController {
     return this.recipesService.create(user.uid, dto);
   }
 
+  @Get()
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @ApiOperation({
+    summary: 'Listar receitas com filtros (nome, categoria, tags)',
+    description:
+      'Pesquisa por parte do nome da receita e/ou por ids de categoria e/ou tags. Sem filtros retorna vazio. Paginação via cursor.',
+  })
+  @ApiQuery({ name: 'query', required: false, type: String, description: 'Parte do nome da receita' })
+  @ApiQuery({ name: 'categoryIds', required: false, type: String, description: 'Ids de categorias separados por vírgula' })
+  @ApiQuery({ name: 'tagIds', required: false, type: String, description: 'Ids de tags separados por vírgula' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'cursor', required: false, type: String })
+  @ApiResponse({ status: 200, type: RecipeFeedResponseDto })
+  async listWithFilters(
+    @Query('query') query?: string,
+    @Query('categoryIds') categoryIds?: string,
+    @Query('tagIds') tagIds?: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @CurrentUser() user?: FirebaseUser,
+  ): Promise<RecipeFeedResponseDto> {
+    const limitNum = Math.min(parseInt(limit ?? '20', 10) || 20, 50);
+    const categoryIdsArr = categoryIds
+      ? categoryIds.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 30)
+      : undefined;
+    const tagIdsArr = tagIds
+      ? tagIds.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 30)
+      : undefined;
+    return this.recipesService.findRecipesFiltered(
+      query ?? '',
+      limitNum,
+      cursor ?? null,
+      categoryIdsArr,
+      tagIdsArr,
+      user?.uid,
+    );
+  }
+
   @Get('feed')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()

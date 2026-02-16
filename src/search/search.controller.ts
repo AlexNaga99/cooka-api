@@ -7,7 +7,8 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { SearchService } from './search.service';
-import { FirebaseAuthGuard } from '../common/guards/firebase-auth.guard';
+import { OptionalFirebaseAuthGuard } from '../common/guards/optional-firebase-auth.guard';
+import { CurrentUser, FirebaseUser } from '../common/decorators/current-user.decorator';
 import { SearchResponseDto } from './dto/search.dto';
 import { ErrorResponseDto } from '../common/dto/error.dto';
 
@@ -17,22 +18,22 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  @UseGuards(FirebaseAuthGuard)
+  @UseGuards(OptionalFirebaseAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Buscar receitas e usuários' })
-  @ApiQuery({ name: 'query', required: false, type: String, description: 'Parte do nome da receita (ou nome do usuário)' })
+  @ApiOperation({ summary: 'Buscar receitas e usuários (filtros: nome, categoria, tags)' })
+  @ApiQuery({ name: 'query', required: false, type: String, description: 'Parte do nome da receita ou do usuário' })
   @ApiQuery({ name: 'categoryIds', required: false, type: String, description: 'Ids de categorias separados por vírgula (ex.: dessert,main)' })
   @ApiQuery({ name: 'tagIds', required: false, type: String, description: 'Ids de tags separados por vírgula (ex.: vegan,chocolate)' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
   @ApiResponse({ status: 200, type: SearchResponseDto })
-  @ApiResponse({ status: 401, type: ErrorResponseDto })
   async search(
     @Query('query') query: string,
     @Query('categoryIds') categoryIds?: string,
     @Query('tagIds') tagIds?: string,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
+    @CurrentUser() user?: FirebaseUser,
   ): Promise<SearchResponseDto> {
     const limitNum = Math.min(parseInt(limit ?? '20', 10) || 20, 50);
     const categoryIdsArr = categoryIds
@@ -47,6 +48,7 @@ export class SearchController {
       cursor ?? null,
       categoryIdsArr,
       tagIdsArr,
+      user?.uid,
     );
   }
 }

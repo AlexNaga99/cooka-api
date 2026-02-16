@@ -136,6 +136,30 @@ export class RatingsService {
   }
 
   /**
+   * Retorna as avaliações do usuário para várias receitas em uma única consulta.
+   * Útil para listagens (feed, busca) onde se precisa de myRating em lote.
+   * Firestore limita 'in' a 30 itens; receitas excedentes não terão rating no mapa.
+   */
+  async getMyRatingsForRecipes(
+    recipeIds: string[],
+    userId: string,
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (!recipeIds.length) return map;
+    const slice = recipeIds.slice(0, IN_QUERY_LIMIT);
+    const snapshot = await this.db
+      .collection('ratings')
+      .where('userId', '==', userId)
+      .where('recipeId', 'in', slice)
+      .get();
+    for (const d of snapshot.docs) {
+      const data = d.data() as { recipeId: string; stars: number };
+      map.set(data.recipeId, data.stars);
+    }
+    return map;
+  }
+
+  /**
    * Retorna a avaliação do usuário na receita, se existir.
    * Um usuário só pode ter uma avaliação por receita (create ou update, nunca duplicar).
    */

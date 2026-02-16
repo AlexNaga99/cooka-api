@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getFirestoreDb } from '../config/firebase.config';
 import { Recipe, User } from '../models';
 import { toISOString } from '../common/utils/firestore.util';
@@ -19,6 +20,8 @@ import type {
 import type { UserResponseDto } from '../auth/dto/auth-verify.dto';
 
 const DEFAULT_STATUS = 'published';
+const MAX_ARRAY_CONTAINS_ANY = 30;
+const SEARCH_TITLE_BATCH_SIZE = 500;
 
 @Injectable()
 export class RecipesService {
@@ -192,6 +195,220 @@ export class RecipesService {
       items.push(this.toRecipeResponse({ ...data, id: d.id }, author));
     }
     return { items, nextCursor, hasMore };
+  }
+
+  /**
+   * Lista receitas com filtros opcionais: nome (substring no título), ids de categoria e/ou tags.
+   * Sem filtro nem query retorna lista vazia. Paginação via cursor (id da última receita da página).
+   * Quando requestUserId é informado, inclui myRating em cada receita (uma consulta em lote).
+   */
+  async findRecipesFiltered(
+    query: string,
+    limit: number,
+    cursor: string | null,
+    categoryIds?: string[],
+    tagIds?: string[],
+    requestUserId?: string,
+  ): Promise<RecipeFeedResponseDto> {
+    const q = (query ?? '').trim().toLowerCase();
+    const hasQuery = q.length > 0;
+    const hasCategoryFilter = (categoryIds?.length ?? 0) > 0;
+    const hasTagFilter = (tagIds?.length ?? 0) > 0;
+
+    if (!hasQuery && !hasCategoryFilter && !hasTagFilter) {
+      return { items: [], nextCursor: null, hasMore: false };
+    }
+
+    const { items, nextCursor } = await this.findRecipesFilteredInternal(
+      q,
+      limit,
+      cursor,
+      categoryIds,
+      tagIds,
+      requestUserId,
+    );
+    return {
+      items,
+      nextCursor,
+      hasMore: nextCursor != null,
+    };
+  }
+
+  private async findRecipesFilteredInternal(
+    q: string,
+    limit: number,
+    cursor: string | null,
+    categoryIds?: string[],
+    tagIds?: string[],
+    requestUserId?: string,
+  ): Promise<{ items: RecipeResponseDto[]; nextCursor: string | null }> {
+    const hasQuery = q.length > 0;
+    const hasCategoryFilter = (categoryIds?.length ?? 0) > 0;
+    const hasTagFilter = (tagIds?.length ?? 0) > 0;
+
+    if (!hasCategoryFilter && !hasTagFilter) {
+      return this.findRecipesByTitle(q, limit, cursor, requestUserId);
+    }
+
+    const categoryIdsSlice = categoryIds?.slice(0, MAX_ARRAY_CONTAINS_ANY) ?? [];
+    const tagIdsSlice = tagIds?.slice(0, MAX_ARRAY_CONTAINS_ANY) ?? [];
+    const filterLimit = limit + 1;
+    let docs: QueryDocumentSnapshot[] = [];
+
+    if (hasCategoryFilter && hasTagFilter) {
+      const byCategory = await this.queryRecipesByFilter(
+        'categories',
+        categoryIdsSlice,
+        limit * 5,
+        cursor,
+      );
+      docs = byCategory.filter((d) => {
+        const data = d.data();
+        const tags = (data.tags as string[] | undefined) ?? [];
+        return tagIdsSlice.some((id) => tags.includes(id));
+      });
+    } else if (hasCategoryFilter) {
+      docs = await this.queryRecipesByFilter(
+        'categories',
+        categoryIdsSlice,
+        filterLimit,
+        cursor,
+      );
+    } else {
+      docs = await this.queryRecipesByFilter(
+        'tags',
+        tagIdsSlice,
+        filterLimit,
+        cursor,
+      );
+    }
+
+    if (hasQuery) {
+      docs = docs.filter((d) => {
+        const title = ((d.data().title as string) ?? '').toLowerCase();
+        return title.includes(q);
+      });
+    }
+
+    const selected = docs.slice(0, limit);
+    const hasMoreInBatch = docs.length > limit;
+    const nextCursor =
+      hasMoreInBatch && selected.length > 0 ? selected[selected.length - 1].id : null;
+
+    const recipeIds = selected.map((d) => d.id);
+    const myRatingsMap = requestUserId
+      ? await this.ratingsService.getMyRatingsForRecipes(recipeIds, requestUserId)
+      : new Map<string, number>();
+
+    const items: RecipeResponseDto[] = [];
+    for (const d of selected) {
+      const data = d.data();
+      const authorId = (data as { authorId: string }).authorId;
+      const author = await this.getAuthor(authorId);
+      const myRating = myRatingsMap.get(d.id) ?? null;
+      items.push(
+        this.toRecipeResponse(
+          { ...data, id: d.id, status: DEFAULT_STATUS } as Recipe & {
+            id: string;
+            createdAt?: unknown;
+            status?: string;
+          },
+          author,
+          myRating ?? undefined,
+        ),
+      );
+    }
+    return { items, nextCursor };
+  }
+
+  /**
+   * Requer índice composto no Firestore:
+   * recipes: status (Ascending), categories (Ascending), createdAt (Descending)
+   * recipes: status (Ascending), tags (Ascending), createdAt (Descending)
+   */
+  private async queryRecipesByFilter(
+    field: 'categories' | 'tags',
+    ids: string[],
+    limitCount: number,
+    cursor: string | null = null,
+  ): Promise<QueryDocumentSnapshot[]> {
+    if (ids.length === 0) return [];
+    let query = this.db
+      .collection('recipes')
+      .where('status', '==', DEFAULT_STATUS)
+      .where(field, 'array-contains-any', ids)
+      .orderBy('createdAt', 'desc')
+      .limit(limitCount);
+
+    if (cursor) {
+      const cursorDoc = await this.db.collection('recipes').doc(cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+    const snapshot = await query.get();
+    return snapshot.docs;
+  }
+
+  /**
+   * Busca por substring no título (case-insensitive). Lote de receitas publicadas, filtro em memória.
+   */
+  private async findRecipesByTitle(
+    q: string,
+    limit: number,
+    cursor: string | null,
+    requestUserId?: string,
+  ): Promise<{ items: RecipeResponseDto[]; nextCursor: string | null }> {
+    const snapshot = await this.db
+      .collection('recipes')
+      .where('status', '==', DEFAULT_STATUS)
+      .orderBy('createdAt', 'desc')
+      .limit(SEARCH_TITLE_BATCH_SIZE)
+      .get();
+
+    const docs = snapshot.docs;
+    const filtered = docs.filter((d) => {
+      const data = d.data();
+      const title = (data.title as string) ?? '';
+      const titleLower = (data.titleLower as string) ?? title.toLowerCase();
+      return (titleLower || title.toLowerCase()).includes(q);
+    });
+
+    let startIndex = 0;
+    if (cursor) {
+      const cursorIndex = filtered.findIndex((d) => d.id === cursor);
+      if (cursorIndex >= 0) startIndex = cursorIndex + 1;
+    }
+
+    const selected = filtered.slice(startIndex, startIndex + limit);
+    const hasMore = filtered.length > startIndex + limit;
+    const nextCursor =
+      hasMore && selected.length > 0 ? selected[selected.length - 1].id : null;
+
+    const recipeIds = selected.map((d) => d.id);
+    const myRatingsMap = requestUserId
+      ? await this.ratingsService.getMyRatingsForRecipes(recipeIds, requestUserId)
+      : new Map<string, number>();
+
+    const items: RecipeResponseDto[] = [];
+    for (const d of selected) {
+      const data = d.data();
+      const authorId = (data as { authorId: string }).authorId;
+      const author = await this.getAuthor(authorId);
+      const myRating = myRatingsMap.get(d.id) ?? null;
+      items.push(
+        this.toRecipeResponse(
+          { ...data, id: d.id, status: DEFAULT_STATUS } as Recipe & {
+            id: string;
+            createdAt?: unknown;
+            status?: string;
+          },
+          author,
+          myRating ?? undefined,
+        ),
+      );
+    }
+    return { items, nextCursor };
   }
 
   async update(

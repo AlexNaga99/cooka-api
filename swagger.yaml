@@ -85,6 +85,48 @@ paths:
         - Recipes
       security:
         - bearer: []
+    get:
+      operationId: RecipesController_listWithFilters
+      summary: Listar receitas com filtros (nome, categoria, tags)
+      description: Pesquisa por parte do nome da receita e/ou por ids de categoria
+        e/ou tags. Sem filtros retorna vazio. Paginação via cursor.
+      parameters:
+        - name: query
+          required: false
+          in: query
+          description: Parte do nome da receita
+          schema:
+            type: string
+        - name: categoryIds
+          required: false
+          in: query
+          description: Ids de categorias separados por vírgula
+          schema:
+            type: string
+        - name: tagIds
+          required: false
+          in: query
+          description: Ids de tags separados por vírgula
+          schema:
+            type: string
+        - name: limit
+          required: false
+          in: query
+          schema:
+            type: number
+        - name: cursor
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipeFeedResponseDto"
+      tags: *a2
   /api/recipes/feed:
     get:
       operationId: RecipesController_feed
@@ -776,12 +818,12 @@ paths:
   /api/search:
     get:
       operationId: SearchController_search
-      summary: Buscar receitas e usuários
+      summary: "Buscar receitas e usuários (filtros: nome, categoria, tags)"
       parameters:
         - name: query
           required: false
           in: query
-          description: Parte do nome da receita (ou nome do usuário)
+          description: Parte do nome da receita ou do usuário
           schema:
             type: string
         - name: categoryIds
@@ -813,12 +855,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchResponseDto"
-        "401":
-          description: ""
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponseDto"
       tags:
         - Search
       security:
