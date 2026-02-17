@@ -873,6 +873,9 @@ paths:
     get:
       operationId: SearchController_search
       summary: "Buscar receitas e usuários (filtros: nome, categoria, tags)"
+      description: "Sem filtros: retorna os primeiros 30 recomendados (por
+        popularidade/favoritagem, depois pelas mais recentes). Com filtros:
+        busca por query, categoryIds e/ou tagIds."
       parameters:
         - name: query
           required: false
@@ -895,6 +898,7 @@ paths:
         - name: limit
           required: false
           in: query
+          description: Máximo de receitas (default 20; sem filtros usa até 30 recomendados)
           schema:
             type: number
         - name: cursor

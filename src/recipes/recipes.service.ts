@@ -157,7 +157,11 @@ export class RecipesService {
     return filtered.slice(0, limit);
   }
 
-  async getFeed(limit: number, cursor?: string | null): Promise<RecipeFeedResponseDto> {
+  async getFeed(
+    limit: number,
+    cursor?: string | null,
+    requestUserId?: string,
+  ): Promise<RecipeFeedResponseDto> {
     let query = this.db
       .collection('recipes')
       .where('status', '==', DEFAULT_STATUS)
@@ -177,11 +181,22 @@ export class RecipesService {
     const docs = snapshot.docs.slice(0, limit);
     const hasMore = snapshot.docs.length > limit;
     const nextCursor = hasMore && docs.length ? docs[docs.length - 1].id : null;
+    const recipeIds = docs.map((d) => d.id);
+    const myRatingsMap = requestUserId
+      ? await this.ratingsService.getMyRatingsForRecipes(recipeIds, requestUserId)
+      : new Map<string, number>();
     const items: RecipeResponseDto[] = [];
     for (const d of docs) {
       const data = d.data() as Recipe & { createdAt?: unknown };
       const author = await this.getAuthor(data.authorId);
-      items.push(this.toRecipeResponse({ ...data, id: d.id, status: DEFAULT_STATUS }, author));
+      const myRating = myRatingsMap.get(d.id) ?? null;
+      items.push(
+        this.toRecipeResponse(
+          { ...data, id: d.id, status: DEFAULT_STATUS },
+          author,
+          myRating ?? undefined,
+        ),
+      );
     }
     return { items, nextCursor, hasMore };
   }

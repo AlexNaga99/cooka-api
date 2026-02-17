@@ -20,6 +20,9 @@ export class SearchService {
     return getFirestoreDb();
   }
 
+  /** Quantidade de receitas recomendadas quando nenhum filtro é aplicado (popularidade + mais recentes). */
+  private static readonly RECOMMENDED_RECIPES_LIMIT = 30;
+
   async search(
     query: string,
     limit: number,
@@ -31,16 +34,29 @@ export class SearchService {
     const q = (query ?? '').trim().toLowerCase();
     const hasQuery = q.length > 0;
     const hasRecipeFilters = (categoryIds?.length ?? 0) > 0 || (tagIds?.length ?? 0) > 0;
+    const noFilters = !hasQuery && !hasRecipeFilters;
 
     this.logger.log(
-      `search() query="${query ?? ''}" q="${q}" hasQuery=${hasQuery} hasRecipeFilters=${hasRecipeFilters} categoryIds=${JSON.stringify(categoryIds)} tagIds=${JSON.stringify(tagIds)} limit=${limit}`,
+      `search() query="${query ?? ''}" q="${q}" hasQuery=${hasQuery} hasRecipeFilters=${hasRecipeFilters} noFilters=${noFilters} categoryIds=${JSON.stringify(categoryIds)} tagIds=${JSON.stringify(tagIds)} limit=${limit}`,
     );
 
     let recipes: RecipeResponseDto[] = [];
     let users: UserProfileResponseDto[] = [];
     let recipeNextCursor: string | null = null;
 
-    if (hasQuery || hasRecipeFilters) {
+    if (noFilters) {
+      const recommendedLimit = Math.min(limit, SearchService.RECOMMENDED_RECIPES_LIMIT);
+      const feed = await this.recipesService.getFeed(
+        recommendedLimit,
+        cursor,
+        requestUserId,
+      );
+      recipes = feed.items;
+      recipeNextCursor = feed.nextCursor ?? null;
+      this.logger.log(
+        `search() recommended recipes.length=${recipes.length} recipeNextCursor=${recipeNextCursor ?? 'null'}`,
+      );
+    } else if (hasQuery || hasRecipeFilters) {
       const feed = await this.recipesService.findRecipesFiltered(
         q,
         limit,
