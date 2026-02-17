@@ -9,6 +9,8 @@ import { AuthService } from '../auth/auth.service';
 import type {
   UserProfileResponseDto,
   FollowResponseDto,
+  CookListResponseDto,
+  CookListItemDto,
 } from './dto/social.dto';
 import type { AccountUpdateRequestDto } from './dto/account.dto';
 
@@ -186,5 +188,90 @@ export class SocialService {
     batch.update(followerRef, { followingCount: followerCount });
     batch.update(followingRef, { followersCount: followingCount });
     await batch.commit();
+  }
+
+  /** Máximo de receitas lidas para agregação (cozinheiros recomendados) */
+  private static readonly RECOMMENDED_COOKS_RECIPE_LIMIT = 2000;
+
+  /** Lista cozinheiros recomendados para seguir: quem tem receitas publicadas, ordenado por quantidade de receitas (mais receitas primeiro). Opcional: filtrar por query (nome do cozinheiro ou nome do prato). */
+  async getRecommendedCooks(
+    requestUserId: string | undefined,
+    options: { query?: string; limit?: number } = {},
+  ): Promise<CookListResponseDto> {
+    const limit = Math.min(options.limit ?? 20, 50);
+    const queryLower = (options.query ?? '').trim().toLowerCase();
+
+    const snapshot = await this.db
+      .collection('recipes')
+      .where('status', '==', 'published')
+      .limit(SocialService.RECOMMENDED_COOKS_RECIPE_LIMIT)
+      .get();
+
+    const countByAuthor = new Map<string, number>();
+    const authorIdsFromRecipeQuery = new Set<string>();
+    for (const doc of snapshot.docs) {
+      const data = doc.data() as { authorId?: string; titleLower?: string };
+      const authorId = data.authorId ?? '';
+      if (!authorId) continue;
+      countByAuthor.set(authorId, (countByAuthor.get(authorId) ?? 0) + 1);
+      if (queryLower && (data.titleLower ?? '').includes(queryLower)) {
+        authorIdsFromRecipeQuery.add(authorId);
+      }
+    }
+
+    let candidateAuthorIds: string[];
+    if (queryLower) {
+      const authorIdsFromName = new Set<string>();
+      const authorIds = [...countByAuthor.keys()];
+      const batchSize = 10;
+      for (let i = 0; i < authorIds.length; i += batchSize) {
+        const chunk = authorIds.slice(i, i + batchSize);
+        const refs = chunk.map((id) => this.db.collection('users').doc(id));
+        const usersSnap = await this.db.getAll(...refs);
+        usersSnap.forEach((doc, idx) => {
+          if (!doc.exists) return;
+          const uid = chunk[idx];
+          if (this.userHasDeleted(doc.data() as { deletedAt?: unknown })) return;
+          const name = ((doc.data() as { name?: string }).name ?? '').toLowerCase();
+          if (name.includes(queryLower)) authorIdsFromName.add(uid);
+        });
+      }
+      candidateAuthorIds = [...new Set([...authorIdsFromRecipeQuery, ...authorIdsFromName])];
+    } else {
+      candidateAuthorIds = [...countByAuthor.keys()];
+    }
+
+    const sorted = candidateAuthorIds
+      .map((authorId) => ({ authorId, count: countByAuthor.get(authorId) ?? 0 }))
+      .filter((x) => x.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit);
+
+    let followingSet = new Set<string>();
+    if (requestUserId) {
+      const followsSnap = await this.db
+        .collection('follows')
+        .where('followerId', '==', requestUserId)
+        .get();
+      followsSnap.docs.forEach((d) => {
+        const followingId = (d.data() as { followingId?: string }).followingId;
+        if (followingId) followingSet.add(followingId);
+      });
+    }
+
+    const items: CookListItemDto[] = [];
+    for (const { authorId, count } of sorted) {
+      try {
+        const profile = await this.getProfile(authorId);
+        items.push({
+          profile,
+          recipesCount: count,
+          isFollowing: requestUserId ? followingSet.has(authorId) : undefined,
+        });
+      } catch {
+        // Usuário deletado ou não encontrado: omitir
+      }
+    }
+    return { items };
   }
 }

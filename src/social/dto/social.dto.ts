@@ -11,3 +11,18 @@ export class FollowResponseDto {
   @ApiProperty()
   success: boolean;
 }
+
+/** Item da listagem de cozinheiros (recomendados ou busca por nome/prato) */
+export class CookListItemDto {
+  @ApiProperty({ type: UserProfileResponseDto, description: 'Perfil do cozinheiro' })
+  profile: UserProfileResponseDto;
+  @ApiProperty({ description: 'Quantidade de receitas publicadas' })
+  recipesCount: number;
+  @ApiProperty({ description: 'Se o usuário logado segue este cozinheiro', required: false })
+  isFollowing?: boolean;
+}
+
+export class CookListResponseDto {
+  @ApiProperty({ type: [CookListItemDto] })
+  items: CookListItemDto[];
+}

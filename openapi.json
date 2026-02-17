@@ -1184,10 +1184,52 @@
         ]
       }
     },
+    "/api/users/cooks": {
+      "get": {
+        "operationId": "SocialController_getRecommendedCooks",
+        "summary": "Listar cozinheiros recomendados para seguir",
+        "description": "Sem filtro: retorna cozinheiros com receitas publicadas, ordenados por quantidade de receitas (quem tem mais aparece primeiro). Com query: filtra por nome do cozinheiro ou nome do prato. Limite padrão 20.",
+        "parameters": [
+          {
+            "name": "query",
+            "required": false,
+            "in": "query",
+            "description": "Filtrar por nome do cozinheiro ou nome de um prato",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Máximo de cozinheiros (default 20, máx 50)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CookListResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Social"
+        ]
+      }
+    },
     "/api/users/{id}/profile": {
       "get": {
         "operationId": "SocialController_getProfile",
-        "summary": "Perfil do usuário",
+        "summary": "Perfil do usuário (cozinheiro)",
         "parameters": [
           {
             "name": "id",
@@ -2185,6 +2227,45 @@
             "nullable": true
           }
         }
+      },
+      "CookListItemDto": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "description": "Perfil do cozinheiro",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserProfileResponseDto"
+              }
+            ]
+          },
+          "recipesCount": {
+            "type": "number",
+            "description": "Quantidade de receitas publicadas"
+          },
+          "isFollowing": {
+            "type": "boolean",
+            "description": "Se o usuário logado segue este cozinheiro"
+          }
+        },
+        "required": [
+          "profile",
+          "recipesCount"
+        ]
+      },
+      "CookListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CookListItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
       },
       "FollowResponseDto": {
         "type": "object",

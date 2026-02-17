@@ -24,7 +24,7 @@ import { RecipesService } from '../recipes/recipes.service';
 import { FirebaseAuthGuard } from '../common/guards/firebase-auth.guard';
 import { OptionalFirebaseAuthGuard } from '../common/guards/optional-firebase-auth.guard';
 import { CurrentUser, FirebaseUser } from '../common/decorators/current-user.decorator';
-import { UserProfileResponseDto, FollowResponseDto } from './dto/social.dto';
+import { UserProfileResponseDto, FollowResponseDto, CookListResponseDto } from './dto/social.dto';
 import { AccountUpdateRequestDto } from './dto/account.dto';
 import { RecipeFeedResponseDto } from '../recipes/dto/recipe.dto';
 import { ErrorResponseDto } from '../common/dto/error.dto';
@@ -124,8 +124,27 @@ export class SocialController {
     return this.recipesService.getByAuthorId(user.uid, user.uid, limitNum, cursor ?? null, status ?? undefined);
   }
 
+  @Get('users/cooks')
+  @UseGuards(OptionalFirebaseAuthGuard)
+  @ApiOperation({
+    summary: 'Listar cozinheiros recomendados para seguir',
+    description:
+      'Sem filtro: retorna cozinheiros com receitas publicadas, ordenados por quantidade de receitas (quem tem mais aparece primeiro). Com query: filtra por nome do cozinheiro ou nome do prato. Limite padrão 20.',
+  })
+  @ApiQuery({ name: 'query', required: false, type: String, description: 'Filtrar por nome do cozinheiro ou nome de um prato' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Máximo de cozinheiros (default 20, máx 50)' })
+  @ApiResponse({ status: 200, type: CookListResponseDto })
+  async getRecommendedCooks(
+    @Query('query') query?: string,
+    @Query('limit') limit?: string,
+    @CurrentUser() user?: FirebaseUser,
+  ): Promise<CookListResponseDto> {
+    const limitNum = Math.min(parseInt(limit ?? '20', 10) || 20, 50);
+    return this.socialService.getRecommendedCooks(user?.uid, { query: query?.trim() || undefined, limit: limitNum });
+  }
+
   @Get('users/:id/profile')
-  @ApiOperation({ summary: 'Perfil do usuário' })
+  @ApiOperation({ summary: 'Perfil do usuário (cozinheiro)' })
   @ApiParam({ name: 'id', description: 'ID do usuário' })
   @ApiResponse({ status: 200, type: UserProfileResponseDto })
   @ApiResponse({ status: 404, type: ErrorResponseDto })
