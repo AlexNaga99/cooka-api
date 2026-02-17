@@ -109,10 +109,17 @@ export class RecipesService {
   /**
    * Busca várias receitas por ID (ex.: tela de favoritos).
    * Retorna na mesma ordem dos ids; omite receitas não encontradas ou inacessíveis (rascunho de outro).
+   * Opcionalmente filtra por query (nome), categoryIds, tagIds e aplica limit.
    */
   async getByIds(
     ids: string[],
     requestUserId?: string,
+    filters?: {
+      query?: string;
+      categoryIds?: string[];
+      tagIds?: string[];
+      limit?: number;
+    },
   ): Promise<RecipeResponseDto[]> {
     const uniqueIds = [...new Set(ids)].filter(Boolean);
     if (uniqueIds.length === 0) return [];
@@ -126,7 +133,28 @@ export class RecipesService {
         // Receita não encontrada ou rascunho de outro: omitir da lista
       }
     }
-    return results;
+
+    if (!filters) return results;
+
+    let filtered = results;
+    const q = (filters.query ?? '').trim().toLowerCase();
+    if (q.length > 0) {
+      filtered = filtered.filter((r) => (r.title ?? '').toLowerCase().includes(q));
+    }
+    if (filters.categoryIds?.length) {
+      const catSet = new Set(filters.categoryIds);
+      filtered = filtered.filter((r) =>
+        (r.categories ?? []).some((c: string) => catSet.has(c)),
+      );
+    }
+    if (filters.tagIds?.length) {
+      const tagSet = new Set(filters.tagIds);
+      filtered = filtered.filter((r) =>
+        (r.tags ?? []).some((t: string) => tagSet.has(t)),
+      );
+    }
+    const limit = filters.limit ?? filtered.length;
+    return filtered.slice(0, limit);
   }
 
   async getFeed(limit: number, cursor?: string | null): Promise<RecipeFeedResponseDto> {

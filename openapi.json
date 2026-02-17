@@ -265,6 +265,7 @@
       "get": {
         "operationId": "RecipesController_getByIds",
         "summary": "Buscar receitas por um ou vários IDs (ex.: tela de favoritos)",
+        "description": "Retorna receitas cujos IDs foram informados. Opcionalmente filtra por query (nome), categoryIds e tagIds, e aplica limit.",
         "parameters": [
           {
             "name": "ids",
@@ -273,6 +274,42 @@
             "description": "Um id ou vários separados por vírgula (ex.: id1 ou id1,id2,id3)",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "query",
+            "required": false,
+            "in": "query",
+            "description": "Parte do nome da receita para filtrar",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryIds",
+            "required": false,
+            "in": "query",
+            "description": "Ids de categorias separados por vírgula",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagIds",
+            "required": false,
+            "in": "query",
+            "description": "Ids de tags separados por vírgula",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Máximo de receitas a retornar (default 20, máx 50)",
+            "schema": {
+              "type": "number"
             }
           }
         ],

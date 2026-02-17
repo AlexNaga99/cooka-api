@@ -122,16 +122,28 @@ export class RecipesController {
 
   @Get('by-ids')
   @UseGuards(OptionalFirebaseAuthGuard)
-  @ApiOperation({ summary: 'Buscar receitas por um ou vários IDs (ex.: tela de favoritos)' })
+  @ApiOperation({
+    summary: 'Buscar receitas por um ou vários IDs (ex.: tela de favoritos)',
+    description:
+      'Retorna receitas cujos IDs foram informados. Opcionalmente filtra por query (nome), categoryIds e tagIds, e aplica limit.',
+  })
   @ApiQuery({
     name: 'ids',
     required: true,
     type: String,
     description: 'Um id ou vários separados por vírgula (ex.: id1 ou id1,id2,id3)',
   })
+  @ApiQuery({ name: 'query', required: false, type: String, description: 'Parte do nome da receita para filtrar' })
+  @ApiQuery({ name: 'categoryIds', required: false, type: String, description: 'Ids de categorias separados por vírgula' })
+  @ApiQuery({ name: 'tagIds', required: false, type: String, description: 'Ids de tags separados por vírgula' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Máximo de receitas a retornar (default 20, máx 50)' })
   @ApiResponse({ status: 200, type: RecipeFeedResponseDto })
   async getByIds(
     @Query('ids') idsParam: string,
+    @Query('query') query?: string,
+    @Query('categoryIds') categoryIds?: string,
+    @Query('tagIds') tagIds?: string,
+    @Query('limit') limit?: string,
     @CurrentUser() user?: FirebaseUser,
   ): Promise<RecipeFeedResponseDto> {
     const ids = (idsParam ?? '')
@@ -139,7 +151,19 @@ export class RecipesController {
       .map((s) => s.trim())
       .filter(Boolean)
       .slice(0, 50);
-    const items = await this.recipesService.getByIds(ids, user?.uid);
+    const limitNum = Math.min(parseInt(limit ?? '20', 10) || 20, 50);
+    const categoryIdsArr = categoryIds
+      ? categoryIds.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 30)
+      : undefined;
+    const tagIdsArr = tagIds
+      ? tagIds.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 30)
+      : undefined;
+    const items = await this.recipesService.getByIds(ids, user?.uid, {
+      query: query?.trim() || undefined,
+      categoryIds: categoryIdsArr,
+      tagIds: tagIdsArr,
+      limit: limitNum,
+    });
     return { items, nextCursor: null, hasMore: false };
   }
 
