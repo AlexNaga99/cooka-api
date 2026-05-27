@@ -6,6 +6,8 @@ import {
 import { getFirestoreDb, getFirebaseAuth } from '../config/firebase.config';
 import { User } from '../models';
 import { AuthService } from '../auth/auth.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/dto/notification.dto';
 import type {
   UserProfileResponseDto,
   FollowResponseDto,
@@ -16,7 +18,10 @@ import type { AccountUpdateRequestDto } from './dto/account.dto';
 
 @Injectable()
 export class SocialService {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private get db() {
     return getFirestoreDb();
@@ -125,6 +130,15 @@ export class SocialService {
     batch.update(followingRef, { followersCount: followingCount + 1 });
     await batch.commit();
 
+    const followerProfile = await this.getProfile(followerId);
+    this.notificationsService.createNotification(
+      followingId,
+      NotificationType.FOLLOW,
+      'Novo seguidor',
+      `${followerProfile.name} começou a te seguir`,
+      { userId: followerId },
+    ).catch(() => {});
+
     return { followerId, followingId, success: true };
   }
 
@@ -132,7 +146,7 @@ export class SocialService {
   async addFavorite(uid: string, recipeId: string): Promise<void> {
     const recipeDoc = await this.db.collection('recipes').doc(recipeId).get();
     if (!recipeDoc.exists) throw new NotFoundException('Receita não encontrada');
-    const recipeData = recipeDoc.data() as { status?: string; authorId?: string };
+    const recipeData = recipeDoc.data() as { status?: string; authorId?: string; title?: string };
     const status = recipeData.status ?? 'published';
     if (status === 'draft' && recipeData.authorId !== uid) {
       throw new NotFoundException('Receita não encontrada');
@@ -148,6 +162,19 @@ export class SocialService {
     if (current.includes(recipeId)) return;
     const next = [...current, recipeId];
     await userRef.update({ favoriteRecipeIds: next });
+
+    const authorId = recipeData.authorId;
+    if (authorId && authorId !== uid) {
+      const favoriterProfile = await this.getProfile(uid);
+      const recipeTitle = recipeData.title ?? 'sua receita';
+      this.notificationsService.createNotification(
+        authorId,
+        NotificationType.FAVORITE,
+        'Nova favorita',
+        `${favoriterProfile.name} favoritou "${recipeTitle}"`,
+        { recipeId },
+      ).catch(() => {});
+    }
   }
 
   /** Remove uma receita dos favoritos do usuário. */

@@ -6,6 +6,7 @@ import { RecipesModule } from './recipes/recipes.module';
 import { SocialModule } from './social/social.module';
 import { SearchModule } from './search/search.module';
 import { CategoriesTagsModule } from './categories-tags/categories-tags.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { CategoriesTagsModule } from './categories-tags/categories-tags.module';
     SocialModule,
     SearchModule,
     CategoriesTagsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

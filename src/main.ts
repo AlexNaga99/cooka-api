@@ -48,6 +48,8 @@ async function bootstrap() {
     .addTag('Search', 'Busca')
     .addTag('Categories', 'Categorias (id + labels por idioma)')
     .addTag('Tags', 'Tags (id + labels por idioma)')
+    .addTag('Notifications', 'Notificações e push tokens')
+    .addTag('Reports', 'Denúncias de receitas e usuários')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

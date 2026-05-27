@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { getFirestoreDb } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/dto/notification.dto';
 import type { RateResponseDto, CommentResponseDto, CommentListResponseDto } from './dto/rate-comment.dto';
 import type { User } from '../models/user.model';
 
@@ -10,7 +12,10 @@ const IN_QUERY_LIMIT = 30;
 
 @Injectable()
 export class RatingsService {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private get db() {
     return getFirestoreDb();
@@ -220,6 +225,26 @@ export class RatingsService {
     batch.update(recipeRef, { ratingAvg, ratingsCount });
     await batch.commit();
 
+    const isNewRating = ratingQuery.empty;
+    if (isNewRating) {
+      const recipeData = recipe.data() as { authorId?: string; title?: string };
+      const authorId = recipeData.authorId;
+      if (authorId && authorId !== userId) {
+        const raterProfile = await this.authService.toUserResponse(
+          { createdAt: new Date() } as User,
+          userId,
+        );
+        const recipeTitle = recipeData.title ?? 'sua receita';
+        this.notificationsService.createNotification(
+          authorId,
+          NotificationType.RATING,
+          'Nova avaliação',
+          `${raterProfile.name} avaliou "${recipeTitle}" com ${stars} estrelas`,
+          { recipeId },
+        ).catch(() => {});
+      }
+    }
+
     return { recipeId, userId, stars, ratingAvg, ratingsCount };
   }
 
@@ -232,15 +257,22 @@ export class RatingsService {
     const recipe = await this.db.collection('recipes').doc(recipeId).get();
     if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
 
+    const recipeData = recipe.data() as { authorId?: string; title?: string };
+
     let effectiveParentId: string | null = null;
+    let notifyUserId: string | null = null;
+    let commentAuthorName: string | undefined;
     if (parentId) {
       const parentDoc = await this.db.collection(COMMENTS_COLLECTION).doc(parentId).get();
       if (!parentDoc.exists)
         throw new BadRequestException('Comentário pai não encontrado');
-      const parentData = parentDoc.data() as { recipeId?: string };
+      const parentData = parentDoc.data() as { recipeId?: string; authorId?: string };
       if (parentData.recipeId !== recipeId)
         throw new BadRequestException('Comentário pai não pertence a esta receita');
       effectiveParentId = parentId;
+      notifyUserId = parentData.authorId ?? null;
+    } else {
+      notifyUserId = recipeData.authorId ?? null;
     }
 
     const ref = this.db.collection(COMMENTS_COLLECTION).doc();
@@ -263,6 +295,20 @@ export class RatingsService {
       author,
     };
     if (effectiveParentId) result.parentId = effectiveParentId;
+
+    if (notifyUserId && notifyUserId !== authorId) {
+      const authorProfile = await this.loadAuthor(authorId);
+      const recipeTitle = recipeData.title ?? 'sua receita';
+      const authorName = authorProfile?.name ?? 'Alguém';
+      this.notificationsService.createNotification(
+        notifyUserId,
+        NotificationType.COMMENT,
+        'Novo comentário',
+        `${authorName} comentou em "${recipeTitle}"`,
+        { recipeId },
+      ).catch(() => {});
+    }
+
     return result;
   }
 }

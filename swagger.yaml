@@ -532,6 +532,269 @@ paths:
                   $ref: "#/components/schemas/CategoryTagItemDto"
       tags:
         - Tags
+  /api/notifications:
+    get:
+      operationId: NotificationsController_getNotifications
+      summary: Listar notificações do usuário (paginado)
+      parameters:
+        - name: limit
+          required: false
+          in: query
+          description: Limite de notificações (default 20, máx 50)
+          schema:
+            type: number
+        - name: cursor
+          required: false
+          in: query
+          description: Cursor para paginação
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: &a3
+        - Notifications
+      security:
+        - bearer: []
+  /api/notifications/{id}/read:
+    patch:
+      operationId: NotificationsController_markAsRead
+      summary: Marcar notificação como lida
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: ID da notificação
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+  /api/notifications/read-all:
+    patch:
+      operationId: NotificationsController_markAllAsRead
+      summary: Marcar todas as notificações como lidas
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                  updatedCount:
+                    type: number
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+  /api/notifications/{id}:
+    delete:
+      operationId: NotificationsController_deleteNotification
+      summary: Deletar notificação
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: ID da notificação
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Notificação deletada
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+  /api/users/push-token:
+    post:
+      operationId: NotificationsController_registerPushToken
+      summary: Registrar token FCM do usuário
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenRequestDto"
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+    delete:
+      operationId: NotificationsController_removePushToken
+      summary: Remover token FCM do usuário
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenRequestDto"
+      responses:
+        "204":
+          description: Token removido
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a3
+      security:
+        - bearer: []
+  /api/recipes/{id}/report:
+    post:
+      operationId: ReportsController_reportRecipe
+      summary: Denunciar receita
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: ID da receita
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportRequestDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: Já denunciou esta receita
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: &a4
+        - Reports
+      security:
+        - bearer: []
+  /api/users/{id}/report:
+    post:
+      operationId: ReportsController_reportUser
+      summary: Denunciar usuário
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: ID do usuário
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportRequestDto"
+      responses:
+        "201":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportResponseDto"
+        "401":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "404":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+        "409":
+          description: Já denunciou este usuário
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDto"
+      tags: *a4
+      security:
+        - bearer: []
   /api/account:
     get:
       operationId: SocialController_getAccount
@@ -556,7 +819,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: &a3
+      tags: &a5
         - Social
       security:
         - bearer: []
@@ -589,7 +852,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
     delete:
@@ -605,7 +868,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
   /api/account/favorites/{recipeId}:
@@ -634,7 +897,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
     delete:
@@ -662,7 +925,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
   /api/account/recipes:
@@ -702,7 +965,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
   /api/users/cooks:
@@ -732,7 +995,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CookListResponseDto"
-      tags: *a3
+      tags: *a5
   /api/users/{id}/profile:
     get:
       operationId: SocialController_getProfile
@@ -757,7 +1020,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
   /api/users/{id}/recipes:
     get:
       operationId: SocialController_getUserRecipes
@@ -801,7 +1064,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
   /api/follow/{userId}:
     post:
       operationId: SocialController_follow
@@ -838,7 +1101,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
     delete:
@@ -866,7 +1129,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponseDto"
-      tags: *a3
+      tags: *a5
       security:
         - bearer: []
   /api/search:
@@ -938,6 +1201,10 @@ tags:
     description: Categorias (id + labels por idioma)
   - name: Tags
     description: Tags (id + labels por idioma)
+  - name: Notifications
+    description: Notificações e push tokens
+  - name: Reports
+    description: Denúncias de receitas e usuários
 servers: []
 components:
   securitySchemes:
@@ -1084,7 +1351,7 @@ components:
             type: string
         status:
           type: string
-          enum: &a4
+          enum: &a6
             - published
             - draft
           default: published
@@ -1298,7 +1565,7 @@ components:
             type: string
         status:
           type: string
-          enum: *a4
+          enum: *a6
           default: published
       required:
         - title
@@ -1370,6 +1637,141 @@ components:
           description: Label em português Brasil
       required:
         - id
+    NotificationDataDto:
+      type: object
+      properties:
+        recipeId:
+          type: string
+          description: ID da receita relacionada
+        userId:
+          type: string
+          description: ID do usuário relacionado
+    NotificationDto:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID da notificação
+        type:
+          type: string
+          enum:
+            - FOLLOW
+            - COMMENT
+            - RATING
+            - FAVORITE
+          description: Tipo da notificação
+        title:
+          type: string
+          description: Título da notificação
+        body:
+          type: string
+          description: Corpo da notificação
+        data:
+          description: Dados adicionais
+          allOf:
+            - $ref: "#/components/schemas/NotificationDataDto"
+        read:
+          type: boolean
+          description: Se foi lida
+        createdAt:
+          type: string
+          description: Data de criação em ISO8601
+      required:
+        - id
+        - type
+        - title
+        - body
+        - read
+        - createdAt
+    NotificationListResponseDto:
+      type: object
+      properties:
+        items:
+          description: Lista de notificações
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationDto"
+        nextCursor:
+          type: object
+          description: Cursor para próxima página
+        hasMore:
+          type: boolean
+          description: Se existem mais notificações
+        unreadCount:
+          type: number
+          description: Total de notificações não lidas
+      required:
+        - items
+        - nextCursor
+        - hasMore
+        - unreadCount
+    PushTokenRequestDto:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Token FCM do dispositivo
+        platform:
+          type: string
+          description: Tipo do dispositivo (android, ios, web)
+      required:
+        - token
+    ReportRequestDto:
+      type: object
+      properties:
+        reason:
+          type: string
+          enum:
+            - SPAM
+            - HARASSMENT
+            - INAPPROPRIATE
+            - VIOLENCE
+            - COPYRIGHT
+            - OTHER
+          description: Motivo da denúncia
+        description:
+          type: string
+          description: Descrição adicional (opcional)
+      required:
+        - reason
+    ReportResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID da denúncia
+        targetType:
+          type: string
+          description: Tipo do alvo (recipe ou user)
+        targetId:
+          type: string
+          description: ID do alvo
+        reason:
+          type: string
+          enum:
+            - SPAM
+            - HARASSMENT
+            - INAPPROPRIATE
+            - VIOLENCE
+            - COPYRIGHT
+            - OTHER
+          description: Motivo
+        description:
+          type: string
+          description: Descrição
+        reporterId:
+          type: string
+          description: Reporter ID
+        createdAt:
+          type: string
+          description: Data da denúncia
+      required:
+        - id
+        - targetType
+        - targetId
+        - reason
+        - reporterId
+        - createdAt
     UserProfileResponseDto:
       type: object
       properties:
