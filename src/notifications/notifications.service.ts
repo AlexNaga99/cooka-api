@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { getFirestoreDb } from '../config/firebase.config';
+import { getFirestoreDb, getFirebaseMessaging } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
-import { NotificationType, NotificationDto, NotificationListResponseDto } from './dto/notification.dto';
+import { NotificationType, NotificationDto, NotificationListResponseDto, SimulateNotificationDto, SimulateNotificationResponseDto } from './dto/notification.dto';
 import type { User } from '../models/user.model';
 
 const NOTIFICATIONS_COLLECTION = 'notifications';
@@ -200,5 +200,86 @@ export class NotificationsService {
       read: data.read ?? false,
       createdAt: toISOString(data.createdAt),
     };
+  }
+
+  async getPushTokens(userId: string): Promise<Array<{ token: string; platform: string }>> {
+    const snapshot = await this.db
+      .collection(PUSH_TOKENS_COLLECTION)
+      .where('userId', '==', userId)
+      .get();
+
+    return snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return { token: data.token, platform: data.platform };
+    });
+  }
+
+  async simulateNotification(dto: SimulateNotificationDto): Promise<SimulateNotificationResponseDto> {
+    const result: SimulateNotificationResponseDto = {
+      savedInDatabase: false,
+      sentViaFcm: false,
+      fcmTokensFound: 0,
+    };
+
+    const notification = await this.createNotification(
+      dto.userId,
+      dto.type,
+      dto.title,
+      dto.body,
+      dto.data,
+    );
+    result.savedInDatabase = true;
+    result.notificationId = notification.id;
+
+    const targetToken = dto.fcmToken
+      ? [{ token: dto.fcmToken, platform: 'android' }]
+      : await this.getPushTokens(dto.userId);
+
+    result.fcmTokensFound = targetToken.length;
+
+    if (targetToken.length === 0) {
+      result.fcmError = 'Nenhum token FCM encontrado para o usuário';
+      return result;
+    }
+
+    try {
+      const messaging = getFirebaseMessaging();
+      const token = targetToken[0].token;
+      result.platform = targetToken[0].platform;
+
+      await messaging.send({
+        token,
+        notification: {
+          title: dto.title,
+          body: dto.body,
+        },
+        data: {
+          notificationId: notification.id,
+          type: dto.type,
+          ...(dto.data?.recipeId ? { recipeId: dto.data.recipeId } : {}),
+          ...(dto.data?.userId ? { userId: dto.data.userId } : {}),
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            channelId: 'cooka_notifications',
+            priority: 'high',
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              contentAvailable: true,
+            },
+          },
+        },
+      });
+
+      result.sentViaFcm = true;
+    } catch (error) {
+      result.fcmError = error instanceof Error ? error.message : 'Erro desconhecido ao enviar via FCM';
+    }
+
+    return result;
   }
 }

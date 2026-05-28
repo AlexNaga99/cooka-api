@@ -3,6 +3,7 @@ import { initializeApp, cert, getApps, App } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { getAuth } from 'firebase-admin/auth';
+import { getMessaging } from 'firebase-admin/messaging';
 
 let firebaseApp: App;
 
@@ -61,4 +62,8 @@ export function getFirebaseStorage() {
 
 export function getFirebaseAuth() {
   return getAuth(getFirebaseApp());
+}
+
+export function getFirebaseMessaging() {
+  return getMessaging(getFirebaseApp());
 }

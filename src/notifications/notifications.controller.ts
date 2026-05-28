@@ -26,6 +26,8 @@ import {
   NotificationDto,
   NotificationListResponseDto,
   PushTokenRequestDto,
+  SimulateNotificationDto,
+  SimulateNotificationResponseDto,
 } from './dto/notification.dto';
 import { ErrorResponseDto } from '../common/dto/error.dto';
 
@@ -121,5 +123,16 @@ export class NotificationsController {
     @Body() dto: PushTokenRequestDto,
   ): Promise<void> {
     await this.notificationsService.removePushToken(user.uid, dto.token);
+  }
+
+  @Post('notifications/simulate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Simular/enviar notificação push (para testes)' })
+  @ApiResponse({ status: 200, type: SimulateNotificationResponseDto })
+  @ApiResponse({ status: 400, type: ErrorResponseDto })
+  async simulateNotification(
+    @Body() dto: SimulateNotificationDto,
+  ): Promise<SimulateNotificationResponseDto> {
+    return this.notificationsService.simulateNotification(dto);
   }
 }
