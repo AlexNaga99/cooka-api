@@ -176,15 +176,21 @@ export class NotificationsService {
     data?: { recipeId?: string; userId?: string },
   ): Promise<NotificationDto> {
     const ref = this.db.collection(NOTIFICATIONS_COLLECTION).doc();
-    await ref.set({
+    const docData: Record<string, unknown> = {
       userId,
       type,
       title,
       body,
-      data: data ?? {},
       read: false,
       createdAt: new Date(),
-    });
+    };
+
+    if (data) {
+      if (data.recipeId) docData.recipeId = data.recipeId;
+      if (data.userId) docData.userId = data.userId;
+    }
+
+    await ref.set(docData);
 
     const doc = await ref.get();
     return this.mapToDto(doc);
