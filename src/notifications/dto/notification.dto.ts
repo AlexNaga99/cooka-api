@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsEnum, IsOptional } from 'class-validator';
 
 export enum NotificationType {
   FOLLOW = 'FOLLOW',
@@ -53,9 +54,14 @@ export class NotificationListResponseDto {
 }
 
 export class PushTokenRequestDto {
+  @IsString()
+  @IsNotEmpty()
   @ApiProperty({ description: 'Token FCM do dispositivo' })
   token: string;
 
+  @IsOptional()
+  @IsString()
+  @IsEnum(['android', 'ios', 'web'])
   @ApiPropertyOptional({ description: 'Tipo do dispositivo (android, ios, web)' })
   platform?: 'android' | 'ios' | 'web';
 }
