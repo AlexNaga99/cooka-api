@@ -172,16 +172,12 @@ export class NotificationsService {
     body: string,
     data?: { recipeId?: string; userId?: string },
   ): Promise<NotificationDto> {
-    // Force UTF-8 encoding to fix locale issues on Railway
-    const safeTitle = Buffer.from(title, 'latin1').toString('utf8');
-    const safeBody = Buffer.from(body, 'latin1').toString('utf8');
-
     const ref = this.db.collection(NOTIFICATIONS_COLLECTION).doc();
     const docData: Record<string, unknown> = {
       userId,
       type,
-      title: safeTitle,
-      body: safeBody,
+      title,
+      body,
       read: false,
       createdAt: new Date(),
     };
