@@ -8,7 +8,9 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.useBodyParser('json', { limit: '10mb', verify: (req: any, _res, buf) => { req.rawBody = buf; } });
+
   const configService = app.get(ConfigService);
   const apiPrefix = configService.get<string>('apiPrefix') ?? 'api';
   const port = configService.get<number>('port') ?? 3000;
