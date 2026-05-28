@@ -67,21 +67,30 @@ export class PushTokenRequestDto {
 }
 
 export class SimulateNotificationDto {
+  @IsString()
+  @IsNotEmpty()
   @ApiProperty({ description: 'ID do usuário que receberá a notificação' })
   userId: string;
 
+  @IsEnum(NotificationType)
   @ApiProperty({ enum: NotificationType, description: 'Tipo da notificação' })
   type: NotificationType;
 
+  @IsString()
+  @IsNotEmpty()
   @ApiProperty({ description: 'Título da notificação' })
   title: string;
 
+  @IsString()
+  @IsNotEmpty()
   @ApiProperty({ description: 'Corpo da notificação' })
   body: string;
 
   @ApiPropertyOptional({ type: NotificationDataDto, description: 'Dados adicionais' })
   data?: NotificationDataDto;
 
+  @IsOptional()
+  @IsString()
   @ApiPropertyOptional({ description: 'Token FCM específico para enviar (opcional - usa tokens salvos se não houver)' })
   fcmToken?: string;
 }
