@@ -283,7 +283,16 @@ export class NotificationsService {
           payload: {
             aps: {
               contentAvailable: true,
+              mutableContent: true,
+              alert: {
+                title: dto.title,
+                body: dto.body,
+              },
             },
+          },
+          headers: {
+            'apns-priority': '10',
+            'apns-topic': 'cooka.notifications',
           },
         },
       });
