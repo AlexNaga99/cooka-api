@@ -293,6 +293,7 @@ export class NotificationsService {
           headers: {
             'apns-priority': '10',
             'apns-topic': 'cooka.notifications',
+            'content-type': 'application/json; charset=utf-8',
           },
         },
       });
