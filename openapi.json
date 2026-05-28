@@ -1149,20 +1149,30 @@
       "delete": {
         "operationId": "NotificationsController_removePushToken",
         "summary": "Remover token FCM do usuário",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushTokenRequestDto"
-              }
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "description": "Token FCM a ser removido",
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
-          "204": {
+          "200": {
             "description": "Token removido"
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
           },
           "401": {
             "description": "",
@@ -1182,6 +1192,48 @@
           {
             "bearer": []
           }
+        ]
+      }
+    },
+    "/api/notifications/simulate": {
+      "post": {
+        "operationId": "NotificationsController_simulateNotification",
+        "summary": "Simular/enviar notificação push (para testes)",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateNotificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateNotificationResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Notifications"
         ]
       }
     },
@@ -2731,6 +2783,84 @@
         },
         "required": [
           "token"
+        ]
+      },
+      "SimulateNotificationDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "ID do usuário que receberá a notificação"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "FOLLOW",
+              "COMMENT",
+              "RATING",
+              "FAVORITE"
+            ],
+            "description": "Tipo da notificação"
+          },
+          "title": {
+            "type": "string",
+            "description": "Título da notificação"
+          },
+          "body": {
+            "type": "string",
+            "description": "Corpo da notificação"
+          },
+          "data": {
+            "description": "Dados adicionais",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationDataDto"
+              }
+            ]
+          },
+          "fcmToken": {
+            "type": "string",
+            "description": "Token FCM específico para enviar (opcional - usa tokens salvos se não houver)"
+          }
+        },
+        "required": [
+          "userId",
+          "type",
+          "title",
+          "body"
+        ]
+      },
+      "SimulateNotificationResponseDto": {
+        "type": "object",
+        "properties": {
+          "savedInDatabase": {
+            "type": "boolean",
+            "description": "Se a notificação foi salva no banco"
+          },
+          "sentViaFcm": {
+            "type": "boolean",
+            "description": "Se a notificação foi enviada via FCM"
+          },
+          "notificationId": {
+            "type": "string",
+            "description": "ID da notificação criada"
+          },
+          "fcmError": {
+            "type": "string",
+            "description": "Mensagem de erro do FCM"
+          },
+          "fcmTokensFound": {
+            "type": "number",
+            "description": "Tokens FCM encontrados para o usuário"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Platform do token usado"
+          }
+        },
+        "required": [
+          "savedInDatabase",
+          "fcmTokensFound"
         ]
       },
       "ReportRequestDto": {
