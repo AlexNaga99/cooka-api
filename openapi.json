@@ -515,7 +515,7 @@
           }
         ],
         "responses": {
-          "204": {
+          "200": {
             "description": "Receita excluída"
           },
           "401": {
@@ -1062,7 +1062,7 @@
           }
         ],
         "responses": {
-          "204": {
+          "200": {
             "description": "Notificação deletada"
           },
           "401": {

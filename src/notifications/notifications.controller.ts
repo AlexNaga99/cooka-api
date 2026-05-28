@@ -83,17 +83,18 @@ export class NotificationsController {
   @Delete('notifications/:id')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Deletar notificação' })
   @ApiParam({ name: 'id', description: 'ID da notificação' })
-  @ApiResponse({ status: 204, description: 'Notificação deletada' })
+  @ApiResponse({ status: 200, description: 'Notificação deletada' })
   @ApiResponse({ status: 401, type: ErrorResponseDto })
   @ApiResponse({ status: 404, type: ErrorResponseDto })
   async deleteNotification(
     @Param('id') id: string,
     @CurrentUser() user: FirebaseUser,
-  ): Promise<void> {
+  ): Promise<object> {
     await this.notificationsService.deleteNotification(user.uid, id);
+    return {};
   }
 
   @Post('users/push-token')

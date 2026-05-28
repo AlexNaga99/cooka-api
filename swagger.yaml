@@ -314,7 +314,7 @@ paths:
           schema:
             type: string
       responses:
-        "204":
+        "200":
           description: Receita excluída
         "401":
           description: ""
@@ -636,7 +636,7 @@ paths:
           schema:
             type: string
       responses:
-        "204":
+        "200":
           description: Notificação deletada
         "401":
           description: ""

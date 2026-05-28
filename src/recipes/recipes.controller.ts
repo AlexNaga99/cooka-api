@@ -216,18 +216,19 @@ export class RecipesController {
   @Delete(':id')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Excluir receita (só autor)' })
   @ApiParam({ name: 'id' })
-  @ApiResponse({ status: 204, description: 'Receita excluída' })
+  @ApiResponse({ status: 200, description: 'Receita excluída' })
   @ApiResponse({ status: 401, type: ErrorResponseDto })
   @ApiResponse({ status: 403, type: ErrorResponseDto })
   @ApiResponse({ status: 404, type: ErrorResponseDto })
   async delete(
     @Param('id') id: string,
     @CurrentUser() user: FirebaseUser,
-  ): Promise<void> {
+  ): Promise<object> {
     await this.recipesService.delete(id, user.uid);
+    return {};
   }
 
   @Post(':id')
