@@ -10,10 +10,7 @@ import {
   Query,
   UseGuards,
   Body,
-  Res,
-  Header,
 } from '@nestjs/common';
-import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -134,7 +131,6 @@ export class NotificationsController {
 
   @Post('notifications/simulate')
   @HttpCode(HttpStatus.OK)
-  @Header('Content-Type', 'application/json; charset=utf-8')
   @ApiOperation({ summary: 'Simular/enviar notificação push (para testes)' })
   @ApiResponse({ status: 200, type: SimulateNotificationResponseDto })
   @ApiResponse({ status: 400, type: ErrorResponseDto })
