@@ -116,14 +116,15 @@ export class NotificationsController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remover token FCM do usuário' })
+  @ApiQuery({ name: 'token', required: true, type: String, description: 'Token FCM a ser removido' })
   @ApiResponse({ status: 204, description: 'Token removido' })
   @ApiResponse({ status: 400, type: ErrorResponseDto })
   @ApiResponse({ status: 401, type: ErrorResponseDto })
   async removePushToken(
     @CurrentUser() user: FirebaseUser,
-    @Body() dto: PushTokenRequestDto,
+    @Query('token') token: string,
   ): Promise<void> {
-    await this.notificationsService.removePushToken(user.uid, dto.token);
+    await this.notificationsService.removePushToken(user.uid, token);
   }
 
   @Post('notifications/simulate')

@@ -144,8 +144,8 @@ export class NotificationsService {
   }
 
   async removePushToken(userId: string, token: string): Promise<void> {
-    if (!token) return;
-    const tokenHash = this.hashToken(token);
+    if (!token || typeof token !== 'string' || !token.trim()) return;
+    const tokenHash = this.hashToken(token.trim());
     const snapshot = await this.db
       .collection(PUSH_TOKENS_COLLECTION)
       .where('userId', '==', userId)
