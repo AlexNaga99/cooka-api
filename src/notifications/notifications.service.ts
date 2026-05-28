@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { getFirestoreDb, getFirebaseMessaging } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
@@ -10,6 +10,8 @@ const PUSH_TOKENS_COLLECTION = 'pushTokens';
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(private readonly authService: AuthService) {}
 
   private get db() {
@@ -222,6 +224,9 @@ export class NotificationsService {
   }
 
   async simulateNotification(dto: SimulateNotificationDto): Promise<SimulateNotificationResponseDto> {
+    this.logger.log(`SimulateNotification: userId=${dto.userId}, type=${dto.type}`);
+    this.logger.log(`FCM Token: ${dto.fcmToken}`);
+
     const result: SimulateNotificationResponseDto = {
       savedInDatabase: false,
       sentViaFcm: false,
@@ -235,6 +240,7 @@ export class NotificationsService {
       dto.body,
       dto.data,
     );
+    this.logger.log(`Notification created: ${notification.id}`);
     result.savedInDatabase = true;
     result.notificationId = notification.id;
 
@@ -243,6 +249,7 @@ export class NotificationsService {
       : await this.getPushTokens(dto.userId);
 
     result.fcmTokensFound = targetToken.length;
+    this.logger.log(`Tokens found: ${targetToken.length}`);
 
     if (targetToken.length === 0) {
       result.fcmError = 'Nenhum token FCM encontrado para o usuário';
@@ -254,7 +261,9 @@ export class NotificationsService {
       const token = targetToken[0].token;
       result.platform = targetToken[0].platform;
 
-      await messaging.send({
+      this.logger.log(`Sending FCM message to token: ${token.substring(0, 30)}...`);
+
+      const response = await messaging.send({
         token,
         notification: {
           title: dto.title,
@@ -271,6 +280,8 @@ export class NotificationsService {
           notification: {
             channelId: 'cooka_notifications',
             priority: 'high',
+            icon: 'notification_icon',
+            color: '#FF6B35',
           },
         },
         apns: {
@@ -282,8 +293,10 @@ export class NotificationsService {
         },
       });
 
+      this.logger.log(`FCM send success: ${response}`);
       result.sentViaFcm = true;
     } catch (error) {
+      this.logger.error(`FCM send error: ${error instanceof Error ? error.message : error}`);
       result.fcmError = error instanceof Error ? error.message : 'Erro desconhecido ao enviar via FCM';
     }
 
