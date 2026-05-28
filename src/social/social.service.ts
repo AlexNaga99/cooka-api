@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { getFirestoreDb, getFirebaseAuth } from '../config/firebase.config';
 import { User } from '../models';
@@ -18,6 +19,7 @@ import type { AccountUpdateRequestDto } from './dto/account.dto';
 
 @Injectable()
 export class SocialService {
+  private readonly logger = new Logger(SocialService.name);
   constructor(
     private readonly authService: AuthService,
     private readonly notificationsService: NotificationsService,
@@ -137,7 +139,7 @@ export class SocialService {
       'Novo seguidor',
       `${followerProfile.name} começou a te seguir`,
       { userId: followerId },
-    ).catch(() => {});
+    ).catch((err) => this.logger.error('Erro ao criar notificação de follow', err));
 
     return { followerId, followingId, success: true };
   }
@@ -173,7 +175,7 @@ export class SocialService {
         'Nova favorita',
         `${favoriterProfile.name} favoritou "${recipeTitle}"`,
         { recipeId },
-      ).catch(() => {});
+      ).catch((err) => this.logger.error('Erro ao criar notificação de favorita', err));
     }
   }
 

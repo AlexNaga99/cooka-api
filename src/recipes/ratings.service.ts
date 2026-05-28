@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { getFirestoreDb } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
@@ -12,6 +12,7 @@ const IN_QUERY_LIMIT = 30;
 
 @Injectable()
 export class RatingsService {
+  private readonly logger = new Logger(RatingsService.name);
   constructor(
     private readonly authService: AuthService,
     private readonly notificationsService: NotificationsService,
@@ -241,7 +242,7 @@ export class RatingsService {
           'Nova avaliação',
           `${raterProfile.name} avaliou "${recipeTitle}" com ${stars} estrelas`,
           { recipeId },
-        ).catch(() => {});
+        ).catch((err) => this.logger.error('Erro ao criar notificação de avaliação', err));
       }
     }
 
@@ -306,7 +307,7 @@ export class RatingsService {
         'Novo comentário',
         `${authorName} comentou em "${recipeTitle}"`,
         { recipeId },
-      ).catch(() => {});
+      ).catch((err) => this.logger.error('Erro ao criar notificação de comentário', err));
     }
 
     return result;

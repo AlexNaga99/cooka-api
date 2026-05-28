@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { getFirestoreDb, getFirebaseMessaging } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
@@ -161,13 +162,7 @@ export class NotificationsService {
   }
 
   private hashToken(token: string): string {
-    let hash = 0;
-    for (let i = 0; i < token.length; i++) {
-      const char = token.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-    return hash.toString(16);
+    return createHash('sha256').update(token).digest('hex').substring(0, 32);
   }
 
   async createNotification(
@@ -189,7 +184,7 @@ export class NotificationsService {
 
     if (data) {
       if (data.recipeId) docData.recipeId = data.recipeId;
-      if (data.userId) docData.userId = data.userId;
+      if (data.userId) docData.relatedUserId = data.userId;
     }
 
     await ref.set(docData);
