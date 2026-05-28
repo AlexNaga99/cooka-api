@@ -117,6 +117,7 @@ export class NotificationsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remover token FCM do usuário' })
   @ApiResponse({ status: 204, description: 'Token removido' })
+  @ApiResponse({ status: 400, type: ErrorResponseDto })
   @ApiResponse({ status: 401, type: ErrorResponseDto })
   async removePushToken(
     @CurrentUser() user: FirebaseUser,
