@@ -2122,6 +2122,10 @@
           "popularityScore": {
             "type": "number"
           },
+          "recipesCount": {
+            "type": "number",
+            "description": "Quantidade de receitas publicadas (desnormalizado)"
+          },
           "favoriteRecipeIds": {
             "description": "IDs das receitas favoritadas pelo usuário",
             "type": "array",
@@ -2145,6 +2149,7 @@
           "followersCount",
           "followingCount",
           "popularityScore",
+          "recipesCount",
           "createdAt"
         ]
       },
@@ -2345,6 +2350,10 @@
           },
           "ratingsCount": {
             "type": "number"
+          },
+          "ratingSum": {
+            "type": "number",
+            "description": "Soma das estrelas (desnormalizado para O(1) no rate)"
           },
           "myRating": {
             "type": "object",
@@ -2961,6 +2970,10 @@
           "popularityScore": {
             "type": "number"
           },
+          "recipesCount": {
+            "type": "number",
+            "description": "Quantidade de receitas publicadas (desnormalizado)"
+          },
           "favoriteRecipeIds": {
             "description": "IDs das receitas favoritadas pelo usuário",
             "type": "array",
@@ -2984,6 +2997,7 @@
           "followersCount",
           "followingCount",
           "popularityScore",
+          "recipesCount",
           "createdAt"
         ]
       },

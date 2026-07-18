@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, MaxLength } from 'class-validator';
 
 export enum NotificationType {
   FOLLOW = 'FOLLOW',
@@ -56,6 +56,7 @@ export class NotificationListResponseDto {
 export class PushTokenRequestDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(4096)
   @ApiProperty({ description: 'Token FCM do dispositivo' })
   token: string;
 
@@ -69,6 +70,7 @@ export class PushTokenRequestDto {
 export class SimulateNotificationDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(64)
   @ApiProperty({ description: 'ID do usuário que receberá a notificação' })
   userId: string;
 
@@ -78,11 +80,13 @@ export class SimulateNotificationDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(120)
   @ApiProperty({ description: 'Título da notificação' })
   title: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(2000)
   @ApiProperty({ description: 'Corpo da notificação' })
   body: string;
 
@@ -91,6 +95,7 @@ export class SimulateNotificationDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(4096)
   @ApiPropertyOptional({ description: 'Token FCM específico para enviar (opcional - usa tokens salvos se não houver)' })
   fcmToken?: string;
 }

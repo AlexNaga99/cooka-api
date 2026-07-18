@@ -23,6 +23,8 @@ export class UserResponseDto {
   followingCount: number;
   @ApiProperty()
   popularityScore: number;
+  @ApiProperty({ description: 'Quantidade de receitas publicadas (desnormalizado)' })
+  recipesCount?: number;
   @ApiProperty({
     type: [String],
     description: 'IDs das receitas favoritadas pelo usuário',

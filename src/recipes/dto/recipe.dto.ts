@@ -1,16 +1,35 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsArray, IsOptional, IsUrl, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsArray,
+  IsOptional,
+  IsUrl,
+  IsIn,
+  MaxLength,
+  ArrayMaxSize,
+} from 'class-validator';
 import { UserResponseDto } from '../../auth/dto/auth-verify.dto';
+
+// Limites razoáveis para uma rede social de receitas.
+const TITLE_MAX = 120;
+const DESCRIPTION_MAX = 5000;
+const INGREDIENTS_MAX = 5000;
+const STEPS_MAX = 10_000;
+const URL_MAX = 2048;
+const CATEGORIES_MAX = 5;
+const TAGS_MAX = 15;
 
 export class RecipeCreateRequestDto {
   @ApiProperty()
   @IsString()
+  @MaxLength(TITLE_MAX)
   title: string;
   @ApiPropertyOptional({
     description: '(opcional) Mantido para compatibilidade; preferir ingredients + preparationSteps',
   })
   @IsOptional()
   @IsString()
+  @MaxLength(DESCRIPTION_MAX)
   description?: string;
   @ApiPropertyOptional({
     description: 'Texto dos ingredientes (formato livre)',
@@ -18,6 +37,7 @@ export class RecipeCreateRequestDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(INGREDIENTS_MAX)
   ingredients?: string | null;
   @ApiPropertyOptional({
     description: 'Modo de preparo / passo a passo (formato livre)',
@@ -25,15 +45,18 @@ export class RecipeCreateRequestDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(STEPS_MAX)
   preparationSteps?: string | null;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @IsUrl({}, { each: true })
+  @ArrayMaxSize(10)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
+  @MaxLength(URL_MAX, { each: true })
   mediaUrls?: string[];
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
   videoUrl?: string | null;
   @ApiPropertyOptional({
     type: [String],
@@ -41,7 +64,9 @@ export class RecipeCreateRequestDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(CATEGORIES_MAX)
   @IsString({ each: true })
+  @MaxLength(64, { each: true })
   categories?: string[];
   @ApiPropertyOptional({
     type: [String],
@@ -49,7 +74,9 @@ export class RecipeCreateRequestDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(TAGS_MAX)
   @IsString({ each: true })
+  @MaxLength(64, { each: true })
   tags?: string[];
   @ApiPropertyOptional({ enum: ['published', 'draft'], default: 'published' })
   @IsOptional()
@@ -61,10 +88,12 @@ export class RecipeUpdateRequestDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(TITLE_MAX)
   title?: string;
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(DESCRIPTION_MAX)
   description?: string;
   @ApiPropertyOptional({
     description: 'Texto dos ingredientes (formato livre)',
@@ -72,6 +101,7 @@ export class RecipeUpdateRequestDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(INGREDIENTS_MAX)
   ingredients?: string | null;
   @ApiPropertyOptional({
     description: 'Modo de preparo / passo a passo (formato livre)',
@@ -79,15 +109,18 @@ export class RecipeUpdateRequestDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(STEPS_MAX)
   preparationSteps?: string | null;
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @IsUrl({}, { each: true })
+  @ArrayMaxSize(10)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
+  @MaxLength(URL_MAX, { each: true })
   mediaUrls?: string[];
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
   videoUrl?: string | null;
   @ApiPropertyOptional({
     type: [String],
@@ -95,7 +128,9 @@ export class RecipeUpdateRequestDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(CATEGORIES_MAX)
   @IsString({ each: true })
+  @MaxLength(64, { each: true })
   categories?: string[];
   @ApiPropertyOptional({
     type: [String],
@@ -103,7 +138,9 @@ export class RecipeUpdateRequestDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(TAGS_MAX)
   @IsString({ each: true })
+  @MaxLength(64, { each: true })
   tags?: string[];
   @ApiPropertyOptional({ enum: ['published', 'draft'] })
   @IsOptional()
@@ -148,6 +185,8 @@ export class RecipeResponseDto {
   ratingAvg: number;
   @ApiProperty()
   ratingsCount: number;
+  @ApiPropertyOptional({ description: 'Soma das estrelas (desnormalizado para O(1) no rate)' })
+  ratingSum?: number;
   @ApiPropertyOptional({
     description: 'Estrelas (1–5) da avaliação do usuário logado nesta receita; só presente quando autenticado',
     nullable: true,

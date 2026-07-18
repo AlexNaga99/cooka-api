@@ -17,10 +17,11 @@ async function bootstrap() {
   app.setGlobalPrefix(apiPrefix);
 
   app.enableCors({
-    origin: true,
+    origin: configService.get<true | string[]>('cors.origins') ?? true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: '*',
+    allowedHeaders: 'Authorization,Content-Type,Accept,Origin,User-Agent',
+    maxAge: 600,
   });
 
   app.useGlobalPipes(
@@ -31,6 +32,10 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  const expressApp = app.getHttpAdapter().getInstance() as import('express').Express;
+  // Confia apenas no primeiro proxy (Railway/Render) para IP correto do throttler.
+  expressApp.set('trust proxy', 1);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Cooka API')

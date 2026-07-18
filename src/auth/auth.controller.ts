@@ -5,6 +5,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
   AuthVerifyRequestDto,
@@ -19,6 +20,8 @@ import { ErrorResponseDto } from '../common/dto/error.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Auth é alvo de brute-force: limite mais agressivo (60/min = 1 rps médio).
+  @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 60, ttl: 60_000 } })
   @Post('verify')
   @ApiOperation({ summary: 'Verificar token Firebase' })
   @ApiResponse({ status: 200, description: 'Token válido', type: AuthVerifyResponseDto })
@@ -27,6 +30,7 @@ export class AuthController {
     return this.authService.verifyToken(dto.idToken);
   }
 
+  @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 60, ttl: 60_000 } })
   @Post('refresh')
   @ApiOperation({ summary: 'Renovar ID Token usando Refresh Token' })
   @ApiResponse({ status: 200, description: 'Novo ID Token e opcionalmente novo Refresh Token', type: AuthRefreshResponseDto })

@@ -1271,6 +1271,9 @@ components:
           type: number
         popularityScore:
           type: number
+        recipesCount:
+          type: number
+          description: Quantidade de receitas publicadas (desnormalizado)
         favoriteRecipeIds:
           description: IDs das receitas favoritadas pelo usuário
           type: array
@@ -1289,6 +1292,7 @@ components:
         - followersCount
         - followingCount
         - popularityScore
+        - recipesCount
         - createdAt
     AuthVerifyResponseDto:
       type: object
@@ -1432,6 +1436,9 @@ components:
           type: number
         ratingsCount:
           type: number
+        ratingSum:
+          type: number
+          description: Soma das estrelas (desnormalizado para O(1) no rate)
         myRating:
           type: object
           description: Estrelas (1–5) da avaliação do usuário logado nesta receita; só
@@ -1878,6 +1885,9 @@ components:
           type: number
         popularityScore:
           type: number
+        recipesCount:
+          type: number
+          description: Quantidade de receitas publicadas (desnormalizado)
         favoriteRecipeIds:
           description: IDs das receitas favoritadas pelo usuário
           type: array
@@ -1896,6 +1906,7 @@ components:
         - followersCount
         - followingCount
         - popularityScore
+        - recipesCount
         - createdAt
     AccountUpdateRequestDto:
       type: object

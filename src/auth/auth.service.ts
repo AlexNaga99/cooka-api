@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getFirebaseAuth, getFirestoreDb } from '../config/firebase.config';
 import { User } from '../models';
@@ -45,6 +45,7 @@ export class AuthService {
         followersCount: 0,
         followingCount: 0,
         popularityScore: 0,
+        recipesCount: 0,
         favoriteRecipeIds: [],
         createdAt: new Date().toISOString(),
         isAdsFree: false,
@@ -64,14 +65,24 @@ export class AuthService {
     };
   }
 
+  /**
+   * Cria refresh token opaco (32 bytes hex). Devolve o token em texto claro para o cliente,
+   * mas grava apenas o SHA-256 truncado no Firestore — mesmo padrão usado em pushTokens.
+   * Lookup por hash impede que quem tem acesso ao Firestore consiga fazer replay.
+   */
   private createBackendRefreshToken(uid: string, db: ReturnType<typeof getFirestoreDb>): string {
     const token = BACKEND_REFRESH_TOKEN_PREFIX + randomBytes(32).toString('hex');
+    const tokenHash = this.hashRefreshToken(token);
     const expiresDays = this.configService.get<number>('refreshToken.expiresDays') ?? 30;
     const expiresAt = Timestamp.fromDate(
       new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000),
     );
-    db.collection(REFRESH_TOKENS_COLLECTION).doc(token).set({ uid, expiresAt });
+    db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).set({ uid, expiresAt });
     return token;
+  }
+
+  private hashRefreshToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex').substring(0, 32);
   }
 
   toUserResponse(data: User & { createdAt?: { toDate?: () => Date } }, id: string): UserResponseDto {
@@ -93,6 +104,7 @@ export class AuthService {
       followersCount: data.followersCount ?? 0,
       followingCount: data.followingCount ?? 0,
       popularityScore: data.popularityScore ?? 0,
+      recipesCount: data.recipesCount ?? 0,
       favoriteRecipeIds: data.favoriteRecipeIds ?? [],
       createdAt: dateStr,
       isAdsFree: data.isAdsFree ?? false,
@@ -108,14 +120,15 @@ export class AuthService {
 
   private async refreshWithBackendToken(token: string): Promise<AuthRefreshResponseDto> {
     const db = getFirestoreDb();
-    const doc = await db.collection(REFRESH_TOKENS_COLLECTION).doc(token).get();
+    const tokenHash = this.hashRefreshToken(token);
+    const doc = await db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).get();
     if (!doc.exists) {
       throw new UnauthorizedException('Refresh token inválido ou expirado');
     }
     const data = doc.data() as { uid: string; expiresAt: { toDate: () => Date } };
     const expiresAt = data.expiresAt?.toDate?.() ?? new Date(0);
     if (expiresAt <= new Date()) {
-      await db.collection(REFRESH_TOKENS_COLLECTION).doc(token).delete();
+      await db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).delete();
       throw new UnauthorizedException('Refresh token inválido ou expirado');
     }
     const uid = data.uid;
@@ -125,8 +138,9 @@ export class AuthService {
     );
     const expiresInSeconds = 3600;
 
+    // Rotação: gera novo par e invalida o hash anterior.
     const newRefreshToken = this.createBackendRefreshToken(uid, db);
-    await db.collection(REFRESH_TOKENS_COLLECTION).doc(token).delete();
+    await db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).delete();
 
     return {
       idToken: accessToken,

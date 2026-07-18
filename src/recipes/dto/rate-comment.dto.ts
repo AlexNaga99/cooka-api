@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, Min, Max, IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsInt, Min, Max, IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
 import { UserResponseDto } from '../../auth/dto/auth-verify.dto';
 
 export class RateRequestDto {
@@ -39,6 +39,7 @@ export class CommentRequestDto {
   @ApiProperty({ description: 'Texto do comentário' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(2000)
   text: string;
 
   @ApiPropertyOptional({
@@ -47,6 +48,7 @@ export class CommentRequestDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(64)
   parentId?: string;
 }
 

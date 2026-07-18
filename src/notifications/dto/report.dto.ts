@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export enum ReportReason {
   SPAM = 'SPAM',
@@ -10,9 +11,13 @@ export enum ReportReason {
 }
 
 export class ReportRequestDto {
+  @IsEnum(ReportReason)
   @ApiProperty({ enum: ReportReason, description: 'Motivo da denúncia' })
   reason: ReportReason;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
   @ApiPropertyOptional({ description: 'Descrição adicional (opcional)' })
   description?: string;
 }
