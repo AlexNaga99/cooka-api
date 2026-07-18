@@ -8,3 +8,7 @@ dist/
 firebase-service-account.json
 *-service-account*.json
 *serviceAccount*.json
+
+# Bench / load test artifacts
+bench/summary.json
+
