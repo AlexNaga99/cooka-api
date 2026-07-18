@@ -188,47 +188,59 @@ export class RatingsService {
   /**
    * Avalia ou atualiza a avaliação da receita (1–5 estrelas).
    * Um usuário tem no máximo uma avaliação por receita: se já avaliou, atualiza a nota
-   * em vez de criar outra. A média e o total da receita são recalculados a partir de
-   * todas as avaliações (soma das estrelas / quantidade de avaliadores).
+   * em vez de criar outra. Média e total são mantidos DESNORMALIZADOS no doc da receita
+   * (campos `ratingSum` e `ratingsCount`). Isso transforma a operação em O(1) por receita,
+   * independente de quantas avaliações ela tem.
    */
   async rate(recipeId: string, userId: string, stars: number): Promise<RateResponseDto> {
     const recipeRef = this.db.collection('recipes').doc(recipeId);
     const recipe = await recipeRef.get();
     if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
 
-    const ratingQuery = await this.db
+    const recipeData = recipe.data() as {
+      authorId?: string;
+      title?: string;
+      ratingSum?: number;
+      ratingsCount?: number;
+    };
+    const currentSum = recipeData.ratingSum ?? 0;
+    const currentCount = recipeData.ratingsCount ?? 0;
+
+    const existingRating = await this.db
       .collection('ratings')
       .where('recipeId', '==', recipeId)
       .where('userId', '==', userId)
       .limit(1)
       .get();
 
-    const batch = this.db.batch();
+    const isNew = existingRating.empty;
+    let newSum: number;
+    let newCount: number;
+    if (isNew) {
+      newSum = currentSum + stars;
+      newCount = currentCount + 1;
+    } else {
+      const oldStars = (existingRating.docs[0].data() as { stars: number }).stars;
+      newSum = currentSum - oldStars + stars;
+      newCount = currentCount;
+    }
+    const newAvg = newCount > 0 ? newSum / newCount : 0;
 
-    if (ratingQuery.empty) {
+    const batch = this.db.batch();
+    if (isNew) {
       const ratingRef = this.db.collection('ratings').doc();
       batch.set(ratingRef, { recipeId, userId, stars });
     } else {
-      batch.update(ratingQuery.docs[0].ref, { stars });
+      batch.update(existingRating.docs[0].ref, { stars });
     }
-
-    const allRatings = await this.db.collection('ratings').where('recipeId', '==', recipeId).get();
-    const starValues = allRatings.docs.map((d) => (d.data() as { stars: number }).stars);
-    if (!ratingQuery.empty) {
-      const existingId = ratingQuery.docs[0].id;
-      const idx = allRatings.docs.findIndex((d) => d.id === existingId);
-      if (idx >= 0) starValues[idx] = stars;
-    } else {
-      starValues.push(stars);
-    }
-    const ratingAvg = starValues.length ? starValues.reduce((a, b) => a + b, 0) / starValues.length : 0;
-    const ratingsCount = starValues.length;
-    batch.update(recipeRef, { ratingAvg, ratingsCount });
+    batch.update(recipeRef, {
+      ratingSum: newSum,
+      ratingsCount: newCount,
+      ratingAvg: newAvg,
+    });
     await batch.commit();
 
-    const isNewRating = ratingQuery.empty;
-    if (isNewRating) {
-      const recipeData = recipe.data() as { authorId?: string; title?: string };
+    if (isNew) {
       const authorId = recipeData.authorId;
       if (authorId && authorId !== userId) {
         const raterProfile = await this.authService.toUserResponse(
@@ -246,7 +258,7 @@ export class RatingsService {
       }
     }
 
-    return { recipeId, userId, stars, ratingAvg, ratingsCount };
+    return { recipeId, userId, stars, ratingAvg: newAvg, ratingsCount: newCount };
   }
 
   async comment(

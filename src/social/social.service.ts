@@ -60,13 +60,16 @@ export class SocialService {
       throw new NotFoundException('Usuário não encontrado');
     }
     const now = new Date();
+    const displayName = firebaseUser.displayName ?? '';
     const newUser = {
-      name: firebaseUser.displayName ?? '',
+      name: displayName,
+      nameLower: displayName.toLowerCase(),
       email: firebaseUser.email ?? '',
       photoUrl: firebaseUser.photoURL ?? null,
       followersCount: 0,
       followingCount: 0,
       popularityScore: 0,
+      recipesCount: 0,
       favoriteRecipeIds: [] as string[],
       createdAt: now,
     };
@@ -82,7 +85,10 @@ export class SocialService {
     if (this.userHasDeleted(data)) throw new NotFoundException('Conta excluída');
 
     const updates: Record<string, unknown> = {};
-    if (dto.name !== undefined) updates.name = dto.name;
+    if (dto.name !== undefined) {
+      updates.name = dto.name;
+      updates.nameLower = dto.name.toLowerCase();
+    }
     if (dto.photoUrl !== undefined) updates.photoUrl = dto.photoUrl;
     if (Object.keys(updates).length === 0) {
       return this.getProfile(uid);
@@ -219,10 +225,9 @@ export class SocialService {
     await batch.commit();
   }
 
-  /** Máximo de receitas lidas para agregação (cozinheiros recomendados) */
-  private static readonly RECOMMENDED_COOKS_RECIPE_LIMIT = 2000;
-
-  /** Lista cozinheiros recomendados para seguir: quem tem receitas publicadas, ordenado por quantidade de receitas (mais receitas primeiro). Opcional: filtrar por query (nome do cozinheiro ou nome do prato). */
+  /** Lista cozinheiros recomendados para seguir: quem tem receitas publicadas,
+   *  ordenado por `recipesCount` desnormalizado no user (mais receitas primeiro).
+   *  Opcional: filtrar por query (nome do cozinheiro ou nome do prato). */
   async getRecommendedCooks(
     requestUserId: string | undefined,
     options: { query?: string; limit?: number } = {},
@@ -230,54 +235,82 @@ export class SocialService {
     const limit = Math.min(options.limit ?? 20, 50);
     const queryLower = (options.query ?? '').trim().toLowerCase();
 
-    const snapshot = await this.db
-      .collection('recipes')
-      .where('status', '==', 'published')
-      .limit(SocialService.RECOMMENDED_COOKS_RECIPE_LIMIT)
-      .get();
+    // 1) Busca direta em users por prefix-match no nome (índice composto name asc + recipesCount desc).
+    //    Quando não há query, basta ordenar por recipesCount desc.
+    let candidates: { id: string; data: Record<string, unknown> }[] = [];
 
-    const countByAuthor = new Map<string, number>();
-    const authorIdsFromRecipeQuery = new Set<string>();
-    for (const doc of snapshot.docs) {
-      const data = doc.data() as { authorId?: string; titleLower?: string };
-      const authorId = data.authorId ?? '';
-      if (!authorId) continue;
-      countByAuthor.set(authorId, (countByAuthor.get(authorId) ?? 0) + 1);
-      if (queryLower && (data.titleLower ?? '').includes(queryLower)) {
-        authorIdsFromRecipeQuery.add(authorId);
-      }
-    }
-
-    let candidateAuthorIds: string[];
     if (queryLower) {
-      const authorIdsFromName = new Set<string>();
-      const authorIds = [...countByAuthor.keys()];
-      const batchSize = 10;
-      for (let i = 0; i < authorIds.length; i += batchSize) {
-        const chunk = authorIds.slice(i, i + batchSize);
-        const refs = chunk.map((id) => this.db.collection('users').doc(id));
-        const usersSnap = await this.db.getAll(...refs);
-        usersSnap.forEach((doc, idx) => {
-          if (!doc.exists) return;
-          const uid = chunk[idx];
-          if (this.userHasDeleted(doc.data() as { deletedAt?: unknown })) return;
-          const name = ((doc.data() as { name?: string }).name ?? '').toLowerCase();
-          if (name.includes(queryLower)) authorIdsFromName.add(uid);
-        });
+      // Procura por prefixo no nome (range query: >= q && < q).
+      const nameSnap = await this.db
+        .collection('users')
+        .where('deletedAt', '==', null)
+        .orderBy('nameLower')
+        .startAt(queryLower)
+        .endAt(queryLower + '')
+        .limit(50)
+        .get();
+      for (const d of nameSnap.docs) {
+        const data = d.data();
+        if (this.userHasDeleted(data as { deletedAt?: unknown })) continue;
+        candidates.push({ id: d.id, data });
       }
-      candidateAuthorIds = [...new Set([...authorIdsFromRecipeQuery, ...authorIdsFromName])];
+
+      // Se veio pouca coisa, completa com autores que têm receita com esse termo no título.
+      if (candidates.length < limit) {
+        const recipeSnap = await this.db
+          .collection('recipes')
+          .where('status', '==', 'published')
+          .orderBy('titleLower')
+          .startAt(queryLower)
+          .endAt(queryLower + '')
+          .limit(200)
+          .get();
+        const candidateIds = new Set(candidates.map((c) => c.id));
+        const authorIdsToFetch: string[] = [];
+        for (const d of recipeSnap.docs) {
+          const authorId = (d.data() as { authorId?: string }).authorId;
+          if (!authorId || candidateIds.has(authorId) || authorIdsToFetch.includes(authorId)) continue;
+          authorIdsToFetch.push(authorId);
+          if (authorIdsToFetch.length >= 30) break;
+        }
+        if (authorIdsToFetch.length > 0) {
+          const refs = authorIdsToFetch.map((id) => this.db.collection('users').doc(id));
+          const userDocs = await this.db.getAll(...refs);
+          userDocs.forEach((udoc, idx) => {
+            if (!udoc.exists) return;
+            const data = udoc.data() ?? {};
+            if (this.userHasDeleted(data as { deletedAt?: unknown })) return;
+            candidates.push({ id: authorIdsToFetch[idx], data });
+          });
+        }
+      }
     } else {
-      candidateAuthorIds = [...countByAuthor.keys()];
+      // Sem filtro: top N usuários por recipesCount desc.
+      const top = await this.db
+        .collection('users')
+        .where('deletedAt', '==', null)
+        .orderBy('recipesCount', 'desc')
+        .limit(limit)
+        .get();
+      for (const d of top.docs) {
+        const data = d.data();
+        candidates.push({ id: d.id, data });
+      }
     }
 
-    const sorted = candidateAuthorIds
-      .map((authorId) => ({ authorId, count: countByAuthor.get(authorId) ?? 0 }))
+    // Filtra quem tem 0 receitas e ordena por recipesCount desc.
+    const withCount = candidates
+      .map((c) => ({
+        id: c.id,
+        count: (c.data.recipesCount as number | undefined) ?? 0,
+        data: c.data,
+      }))
       .filter((x) => x.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, limit);
 
     let followingSet = new Set<string>();
-    if (requestUserId) {
+    if (requestUserId && withCount.length > 0) {
       const followsSnap = await this.db
         .collection('follows')
         .where('followerId', '==', requestUserId)
@@ -289,17 +322,16 @@ export class SocialService {
     }
 
     const items: CookListItemDto[] = [];
-    for (const { authorId, count } of sorted) {
-      try {
-        const profile = await this.getProfile(authorId);
-        items.push({
-          profile,
-          recipesCount: count,
-          isFollowing: requestUserId ? followingSet.has(authorId) : undefined,
-        });
-      } catch {
-        // Usuário deletado ou não encontrado: omitir
-      }
+    for (const { id, count, data } of withCount) {
+      const profile = this.authService.toUserResponse(
+        data as unknown as import('../models').User & { createdAt?: { toDate: () => Date } },
+        id,
+      ) as UserProfileResponseDto;
+      items.push({
+        profile,
+        recipesCount: count,
+        isFollowing: requestUserId ? followingSet.has(id) : undefined,
+      });
     }
     return { items };
   }

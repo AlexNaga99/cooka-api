@@ -5,10 +5,12 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestoreDb } from '../config/firebase.config';
 import { Recipe, User } from '../models';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
+import type { UserResponseDto } from '../auth/dto/auth-verify.dto';
 import { CategoriesTagsService } from '../categories-tags/categories-tags.service';
 import { RatingsService } from './ratings.service';
 import type {
@@ -17,7 +19,6 @@ import type {
   RecipeFeedResponseDto,
   RecipeUpdateRequestDto,
 } from './dto/recipe.dto';
-import type { UserResponseDto } from '../auth/dto/auth-verify.dto';
 
 const DEFAULT_STATUS = 'published';
 const MAX_ARRAY_CONTAINS_ANY = 30;
@@ -81,11 +82,22 @@ export class RecipesService {
       parentRecipeId: null,
       ratingAvg: 0,
       ratingsCount: 0,
+      ratingSum: 0,
       popularityScore: 0,
       status,
       createdAt: now,
     };
-    await ref.set(data);
+
+    // Incremento desnormalizado do contador de receitas do autor.
+    // FieldValue.increment é atômico no Firestore.
+    const batch = this.db.batch();
+    batch.set(ref, data);
+    batch.set(
+      this.db.collection('users').doc(authorId),
+      { recipesCount: FieldValue.increment(1) },
+      { merge: true },
+    );
+    await batch.commit();
     return this.getById(ref.id, authorId);
   }
 
@@ -124,14 +136,50 @@ export class RecipesService {
     const uniqueIds = [...new Set(ids)].filter(Boolean);
     if (uniqueIds.length === 0) return [];
 
+    // Batch read: 1 round-trip em vez de N.
+    const refs = uniqueIds.map((id) => this.db.collection('recipes').doc(id));
+    const docs = await this.db.getAll(...refs);
+
+    // Carrega autores em batch também (evita N+1 no getAuthor).
+    const authorIds = Array.from(
+      new Set(
+        docs
+          .filter((d) => d.exists)
+          .map((d) => (d.data() as { authorId?: string })?.authorId)
+          .filter((x): x is string => Boolean(x)),
+      ),
+    );
+    const authorRefs = authorIds.map((aid) => this.db.collection('users').doc(aid));
+    const authorDocs = authorIds.length > 0 ? await this.db.getAll(...authorRefs) : [];
+    const authorById = new Map<string, UserResponseDto>();
+    authorDocs.forEach((udoc, idx) => {
+      if (!udoc.exists) return;
+      const authorId = authorIds[idx];
+      const authorData = udoc.data() as User & { createdAt?: { toDate: () => Date }; deletedAt?: unknown };
+      if (authorData.deletedAt) return;
+      authorById.set(
+        authorId,
+        this.authService.toUserResponse(authorData, authorId),
+      );
+    });
+
+    // myRatings em batch
+    const myRatingsMap = requestUserId
+      ? await this.ratingsService.getMyRatingsForRecipes(
+          docs.filter((d) => d.exists).map((d) => d.id),
+          requestUserId,
+        )
+      : new Map<string, number>();
+
     const results: RecipeResponseDto[] = [];
-    for (const id of uniqueIds) {
-      try {
-        const recipe = await this.getById(id, requestUserId);
-        results.push(recipe);
-      } catch {
-        // Receita não encontrada ou rascunho de outro: omitir da lista
-      }
+    for (const doc of docs) {
+      if (!doc.exists) continue;
+      const data = doc.data() as Recipe & { createdAt?: unknown; status?: string; authorId: string };
+      const status = data.status ?? DEFAULT_STATUS;
+      if (status === 'draft' && data.authorId !== requestUserId) continue;
+      const author = authorById.get(data.authorId);
+      const myRating = myRatingsMap.get(doc.id) ?? null;
+      results.push(this.toRecipeResponse({ ...data, id: doc.id, status }, author, myRating));
     }
 
     if (!filters) return results;
@@ -394,7 +442,12 @@ export class RecipesService {
   }
 
   /**
-   * Busca por substring no título (case-insensitive). Lote de receitas publicadas, filtro em memória.
+   * Busca por prefixo no título (case-insensitive) usando índice composto do Firestore.
+   * Range query: titleLower >= q && titleLower < q +  ( é o último caractere UTF-8, marca
+   * o final exclusivo do intervalo). É o jeito que o Firestore oferece para "começa com".
+   *
+   * Atenção: NÃO é substring (ex.: query "olo" não encontra "bolo"). Para substring livre,
+   * considerar um serviço externo (Algolia/Meilisearch) em uma próxima sprint.
    */
   private async findRecipesByTitle(
     q: string,
@@ -402,39 +455,36 @@ export class RecipesService {
     cursor: string | null,
     requestUserId?: string,
   ): Promise<{ items: RecipeResponseDto[]; nextCursor: string | null }> {
-    const snapshot = await this.db
+    const end = q + '';
+    let query = this.db
       .collection('recipes')
       .where('status', '==', DEFAULT_STATUS)
+      .where('titleLower', '>=', q)
+      .where('titleLower', '<', end)
+      .orderBy('titleLower')
       .orderBy('createdAt', 'desc')
-      .limit(SEARCH_TITLE_BATCH_SIZE)
-      .get();
+      .limit(limit + 1);
 
-    const docs = snapshot.docs;
-    const filtered = docs.filter((d) => {
-      const data = d.data();
-      const title = (data.title as string) ?? '';
-      const titleLower = (data.titleLower as string) ?? title.toLowerCase();
-      return (titleLower || title.toLowerCase()).includes(q);
-    });
-
-    let startIndex = 0;
     if (cursor) {
-      const cursorIndex = filtered.findIndex((d) => d.id === cursor);
-      if (cursorIndex >= 0) startIndex = cursorIndex + 1;
+      const cursorDoc = await this.db.collection('recipes').doc(cursor).get();
+      if (cursorDoc.exists) {
+        const cursorData = cursorDoc.data() as { titleLower?: string; createdAt?: unknown };
+        query = query.startAfter(cursorData.titleLower ?? '', cursorData.createdAt);
+      }
     }
-
-    const selected = filtered.slice(startIndex, startIndex + limit);
-    const hasMore = filtered.length > startIndex + limit;
+    const snapshot = await query.get();
+    const docs = snapshot.docs.slice(0, limit);
+    const hasMore = snapshot.docs.length > limit;
     const nextCursor =
-      hasMore && selected.length > 0 ? selected[selected.length - 1].id : null;
+      hasMore && docs.length > 0 ? docs[docs.length - 1].id : null;
 
-    const recipeIds = selected.map((d) => d.id);
+    const recipeIds = docs.map((d) => d.id);
     const myRatingsMap = requestUserId
       ? await this.ratingsService.getMyRatingsForRecipes(recipeIds, requestUserId)
       : new Map<string, number>();
 
     const items: RecipeResponseDto[] = [];
-    for (const d of selected) {
+    for (const d of docs) {
       const data = d.data();
       const authorId = (data as { authorId: string }).authorId;
       const author = await this.getAuthor(authorId);
@@ -491,11 +541,22 @@ export class RecipesService {
     const ref = this.db.collection('recipes').doc(id);
     const doc = await ref.get();
     if (!doc.exists) throw new NotFoundException('Receita não encontrada');
-    const data = doc.data() as { authorId: string };
+    const data = doc.data() as { authorId: string; status?: string };
     if (data.authorId !== uid) {
       throw new ForbiddenException('Apenas o autor pode excluir esta receita');
     }
-    await ref.delete();
+
+    const batch = this.db.batch();
+    batch.delete(ref);
+    // Só decrementa contador se a receita era publicada (drafts não contam).
+    if ((data.status ?? DEFAULT_STATUS) === DEFAULT_STATUS) {
+      batch.set(
+        this.db.collection('users').doc(uid),
+        { recipesCount: FieldValue.increment(-1) },
+        { merge: true },
+      );
+    }
+    await batch.commit();
   }
 
   async createVariation(
@@ -531,11 +592,20 @@ export class RecipesService {
       parentRecipeId: parentId,
       ratingAvg: 0,
       ratingsCount: 0,
+      ratingSum: 0,
       popularityScore: 0,
       status: DEFAULT_STATUS,
       createdAt: now,
     };
-    await ref.set(data);
+
+    const batch = this.db.batch();
+    batch.set(ref, data);
+    batch.set(
+      this.db.collection('users').doc(authorId),
+      { recipesCount: FieldValue.increment(1) },
+      { merge: true },
+    );
+    await batch.commit();
     return this.getById(ref.id, authorId);
   }
 
@@ -566,6 +636,7 @@ export class RecipesService {
       parentRecipeId: recipe.parentRecipeId ?? null,
       ratingAvg: recipe.ratingAvg ?? 0,
       ratingsCount: recipe.ratingsCount ?? 0,
+      ratingSum: recipe.ratingSum ?? 0,
       myRating: myRating ?? null,
       status: (recipe.status as 'published' | 'draft') ?? DEFAULT_STATUS,
       createdAt: toISOString(recipe.createdAt),

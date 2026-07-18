@@ -73,11 +73,13 @@ export class SearchService {
     }
 
     if (hasQuery) {
+      // Index range: nameLower >= q && nameLower < q + \uf8ff (prefix-match, mesmo padr\u00e3o das receitas).
       const usersSnapshot = await this.db
         .collection('users')
-        .orderBy('name')
-        .startAt(q)
-        .endAt(q + '\uf8ff')
+        .where('deletedAt', '==', null)
+        .where('nameLower', '>=', q)
+        .where('nameLower', '<', q + '\uf8ff')
+        .orderBy('nameLower')
         .limit(limit)
         .get();
       for (const d of usersSnapshot.docs) {

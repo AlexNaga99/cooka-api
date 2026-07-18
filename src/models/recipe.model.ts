@@ -21,6 +21,8 @@ export interface Recipe {
   parentRecipeId?: string | null;
   ratingAvg: number;
   ratingsCount: number;
+  /** Soma de estrelas (desnormalizado) — evita full-scan em rate(). */
+  ratingSum?: number;
   popularityScore?: number;
   status?: RecipeStatus;
   createdAt: Date;
