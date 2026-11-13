@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -28,6 +28,14 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Token inválido', type: ErrorResponseDto })
   async verify(@Body() dto: AuthVerifyRequestDto): Promise<AuthVerifyResponseDto> {
     return this.authService.verifyToken(dto.idToken);
+  }
+
+  @Post('logout')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Encerrar sessão (revoga o refresh token)' })
+  async logout(@Body() dto: AuthRefreshRequestDto): Promise<object> {
+    await this.authService.revokeRefreshToken(dto.refreshToken);
+    return {};
   }
 
   @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 60, ttl: 60_000 } })

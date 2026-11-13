@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { getFirestoreDb } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
 import { AuthService } from '../auth/auth.service';
@@ -22,11 +22,61 @@ export class RatingsService {
     return getFirestoreDb();
   }
 
+  /** IDs de usuários que o requester bloqueou (comentários deles ficam ocultos). */
+  private async getBlockedIds(userId?: string): Promise<Set<string>> {
+    if (!userId) return new Set();
+    const snap = await this.db.collection('blocks').where('blockerId', '==', userId).get();
+    return new Set(snap.docs.map((d) => (d.data() as { blockedId: string }).blockedId));
+  }
+
+  /**
+   * Remove um comentário (e suas respostas). Permitido ao autor do comentário
+   * ou ao autor da receita (moderação do próprio conteúdo).
+   */
+  async deleteComment(recipeId: string, commentId: string, userId: string): Promise<void> {
+    const ref = this.db.collection(COMMENTS_COLLECTION).doc(commentId);
+    const doc = await ref.get();
+    if (!doc.exists) throw new NotFoundException('Comentário não encontrado');
+    const data = doc.data() as { recipeId: string; authorId: string };
+    if (data.recipeId !== recipeId) throw new NotFoundException('Comentário não encontrado');
+    let allowed = data.authorId === userId;
+    if (!allowed) {
+      const recipe = await this.db.collection('recipes').doc(recipeId).get();
+      allowed = recipe.exists && (recipe.data() as { authorId?: string }).authorId === userId;
+    }
+    if (!allowed) throw new ForbiddenException('Sem permissão para remover este comentário');
+
+    const toDelete = [ref];
+    let levelIds = [commentId];
+    while (levelIds.length > 0) {
+      const nextIds: string[] = [];
+      for (let i = 0; i < levelIds.length; i += IN_QUERY_LIMIT) {
+        const snap = await this.db
+          .collection(COMMENTS_COLLECTION)
+          .where('recipeId', '==', recipeId)
+          .where('parentId', 'in', levelIds.slice(i, i + IN_QUERY_LIMIT))
+          .get();
+        snap.docs.forEach((d) => {
+          toDelete.push(d.ref);
+          nextIds.push(d.id);
+        });
+      }
+      levelIds = nextIds;
+    }
+    for (let i = 0; i < toDelete.length; i += 400) {
+      const batch = this.db.batch();
+      toDelete.slice(i, i + 400).forEach((r) => batch.delete(r));
+      await batch.commit();
+    }
+  }
+
   async getComments(
     recipeId: string,
     limit: number,
     cursor?: string | null,
+    requestUserId?: string,
   ): Promise<CommentListResponseDto> {
+    const blocked = await this.getBlockedIds(requestUserId);
     const recipe = await this.db.collection('recipes').doc(recipeId).get();
     if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
 
@@ -44,11 +94,15 @@ export class RatingsService {
       }
     }
     const snapshot = await query.get();
-    const rootDocs = snapshot.docs.slice(0, limit);
+    const rootDocs = snapshot.docs.slice(0, limit).filter(
+      (d) => !blocked.has((d.data() as { authorId: string }).authorId),
+    );
     const hasMore = snapshot.docs.length > limit;
     const nextCursor = hasMore && rootDocs.length ? rootDocs[rootDocs.length - 1].id : null;
     const rootIds = rootDocs.map((d) => d.id);
-    const allDescendants = await this.loadAllDescendants(recipeId, rootIds);
+    const allDescendants = (await this.loadAllDescendants(recipeId, rootIds)).filter(
+      (c) => !blocked.has(c.authorId),
+    );
     const repliesByParent = new Map<string, CommentResponseDto[]>();
     for (const c of allDescendants) {
       const pid = c.parentId ?? '';
@@ -131,7 +185,18 @@ export class RatingsService {
     return result;
   }
 
+  private readonly authorCache = new Map<string, { at: number; value: CommentResponseDto['author'] }>();
+
   private async loadAuthor(authorId: string): Promise<CommentResponseDto['author']> {
+    const hit = this.authorCache.get(authorId);
+    if (hit && Date.now() - hit.at < 30_000) return hit.value;
+    const value = await this.fetchAuthor(authorId);
+    if (this.authorCache.size > 2000) this.authorCache.clear();
+    this.authorCache.set(authorId, { at: Date.now(), value });
+    return value;
+  }
+
+  private async fetchAuthor(authorId: string): Promise<CommentResponseDto['author']> {
     const userDoc = await this.db.collection('users').doc(authorId).get();
     return userDoc.exists
       ? this.authService.toUserResponse(
@@ -200,59 +265,53 @@ export class RatingsService {
     const recipeData = recipe.data() as {
       authorId?: string;
       title?: string;
+      status?: string;
       ratingSum?: number;
       ratingsCount?: number;
     };
-    const currentSum = recipeData.ratingSum ?? 0;
-    const currentCount = recipeData.ratingsCount ?? 0;
-
-    const existingRating = await this.db
+    if ((recipeData.status ?? 'published') === 'draft') {
+      throw new NotFoundException('Receita não encontrada');
+    }
+    if (recipeData.authorId === userId) {
+      throw new BadRequestException('Você não pode avaliar a própria receita');
+    }
+    const ratingQuery = await this.db
       .collection('ratings')
       .where('recipeId', '==', recipeId)
       .where('userId', '==', userId)
       .limit(1)
       .get();
+    // ID determinístico garante 1 avaliação por usuário/receita mesmo com requests concorrentes.
+    const ratingRef = ratingQuery.empty
+      ? this.db.collection('ratings').doc(`${recipeId}_${userId}`)
+      : ratingQuery.docs[0].ref;
 
-    const isNew = existingRating.empty;
-    let newSum: number;
-    let newCount: number;
-    if (isNew) {
-      newSum = currentSum + stars;
-      newCount = currentCount + 1;
-    } else {
-      const oldStars = (existingRating.docs[0].data() as { stars: number }).stars;
-      newSum = currentSum - oldStars + stars;
-      newCount = currentCount;
-    }
-    const newAvg = newCount > 0 ? newSum / newCount : 0;
-
-    const batch = this.db.batch();
-    if (isNew) {
-      const ratingRef = this.db.collection('ratings').doc();
-      batch.set(ratingRef, { recipeId, userId, stars });
-    } else {
-      batch.update(existingRating.docs[0].ref, { stars });
-    }
-    batch.update(recipeRef, {
-      ratingSum: newSum,
-      ratingsCount: newCount,
-      ratingAvg: newAvg,
+    const result = await this.db.runTransaction(async (tx) => {
+      const [recSnap, ratingSnap] = await Promise.all([tx.get(recipeRef), tx.get(ratingRef)]);
+      const rd = recSnap.data() as { ratingSum?: number; ratingsCount?: number };
+      const currentSum = rd.ratingSum ?? 0;
+      const currentCount = rd.ratingsCount ?? 0;
+      const isNewRating = !ratingSnap.exists;
+      const oldStars = isNewRating ? 0 : (ratingSnap.data() as { stars: number }).stars;
+      const sum = currentSum - oldStars + stars;
+      const count = isNewRating ? currentCount + 1 : currentCount;
+      const avg = count > 0 ? sum / count : 0;
+      tx.set(ratingRef, { recipeId, userId, stars });
+      tx.update(recipeRef, { ratingSum: sum, ratingsCount: count, ratingAvg: avg });
+      return { isNew: isNewRating, newAvg: avg, newCount: count };
     });
-    await batch.commit();
+    const { isNew, newAvg, newCount } = result;
 
     if (isNew) {
       const authorId = recipeData.authorId;
       if (authorId && authorId !== userId) {
-        const raterProfile = await this.authService.toUserResponse(
-          { createdAt: new Date() } as User,
-          userId,
-        );
+        const raterProfile = await this.loadAuthor(userId);
         const recipeTitle = recipeData.title ?? 'sua receita';
         this.notificationsService.createNotification(
           authorId,
           NotificationType.RATING,
           'Nova avaliação',
-          `${raterProfile.name} avaliou "${recipeTitle}" com ${stars} estrelas`,
+          `${raterProfile?.name ?? 'Alguém'} avaliou "${recipeTitle}" com ${stars} estrelas`,
           { recipeId },
         ).catch((err) => this.logger.error('Erro ao criar notificação de avaliação', err));
       }

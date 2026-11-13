@@ -1,5 +1,6 @@
 export default () => {
-  const isProd = process.env.NODE_ENV === 'production';
+  // Falha fechado: só dev/test aceitam o segredo padrão (NODE_ENV ausente conta como produção).
+  const isProd = !['development', 'test'].includes(process.env.NODE_ENV ?? '');
   const jwtSecret = process.env.JWT_SECRET ?? 'change-me-in-production';
 
   // Fail-fast em produção com segredo padrão ou muito curto (<32 chars = ~192 bits).

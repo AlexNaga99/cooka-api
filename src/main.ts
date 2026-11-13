@@ -37,6 +37,18 @@ async function bootstrap() {
   // Confia apenas no primeiro proxy (Railway/Render) para IP correto do throttler.
   expressApp.set('trust proxy', 1);
 
+  // Cabeçalhos básicos de segurança (sem dependência extra).
+  expressApp.disable('x-powered-by');
+  app.use((_req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+    next();
+  });
+
+  const docsEnabled =
+    process.env.ENABLE_DOCS === 'true' || ['development', 'test'].includes(process.env.NODE_ENV ?? '');
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Cooka API')
     .setDescription(
@@ -58,30 +70,33 @@ async function bootstrap() {
     .addTag('Reports', 'Denúncias de receitas e usuários')
     .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  if (docsEnabled) {
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
 
-  // Gera arquivos OpenAPI na raiz do projeto (para Flutter/codegen)
-  const outputDir = process.cwd();
-  const jsonPath = join(outputDir, 'openapi.json');
-  const yamlPath = join(outputDir, 'swagger.yaml');
-  writeFileSync(jsonPath, JSON.stringify(document, null, 2), 'utf-8');
-  console.log(`OpenAPI gerado: ${jsonPath}`);
-  try {
-    const yaml = await import('yaml');
-    writeFileSync(yamlPath, yaml.stringify(document), 'utf-8');
-    console.log(`Swagger YAML gerado: ${yamlPath}`);
-  } catch {
-    // npm i yaml para gerar swagger.yaml
+    // Gera arquivos OpenAPI na raiz do projeto (para Flutter/codegen)
+    const outputDir = process.cwd();
+    const jsonPath = join(outputDir, 'openapi.json');
+    const yamlPath = join(outputDir, 'swagger.yaml');
+    writeFileSync(jsonPath, JSON.stringify(document, null, 2), 'utf-8');
+    console.log(`OpenAPI gerado: ${jsonPath}`);
+    try {
+      const yaml = await import('yaml');
+      writeFileSync(yamlPath, yaml.stringify(document), 'utf-8');
+      console.log(`Swagger YAML gerado: ${yamlPath}`);
+    } catch {
+      // npm i yaml para gerar swagger.yaml
+    }
+
+    SwaggerModule.setup('docs', app, document, {
+      jsonDocumentUrl: 'docs/json',
+      yamlDocumentUrl: 'docs/yaml',
+    });
+
   }
-
-  SwaggerModule.setup('docs', app, document, {
-    jsonDocumentUrl: 'docs/json',
-    yamlDocumentUrl: 'docs/yaml',
-  });
 
   await app.listen(port);
   console.log(`Cooka API: http://localhost:${port}/${apiPrefix}`);
-  console.log(`Swagger UI: http://localhost:${port}/docs`);
+  if (docsEnabled) console.log(`Swagger UI: http://localhost:${port}/docs`);
 }
 
 bootstrap().catch((err) => {

@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { getFirebaseAuth } from '../../config/firebase.config';
+import { isAccountDeleted } from '../utils/account-status';
 
 @Injectable()
 export class OptionalFirebaseAuthGuard implements CanActivate {
@@ -15,6 +16,15 @@ export class OptionalFirebaseAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    await this.authenticate(context);
+    const request = context.switchToHttp().getRequest();
+    if (request.user?.uid && (await isAccountDeleted(request.user.uid))) {
+      request.user = undefined; // conta excluída: trata como anônimo
+    }
+    return true;
+  }
+
+  private async authenticate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -33,7 +43,7 @@ export class OptionalFirebaseAuthGuard implements CanActivate {
     } catch {
       try {
         const secret = this.configService.get<string>('jwt.secret');
-        const payload = this.jwtService.verify<{ sub: string }>(token, { secret });
+        const payload = this.jwtService.verify<{ sub: string }>(token, { secret, algorithms: ['HS256'] });
         request.user = {
           uid: payload.sub,
           email: undefined,

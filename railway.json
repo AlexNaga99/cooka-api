@@ -3,7 +3,7 @@
   "build": {
     "builder": "NIXPACKS",
     "nixpacks": {
-      "nodeVersion": "20"
+      "nodeVersion": "22.23.4"
     }
   },
   "deploy": {

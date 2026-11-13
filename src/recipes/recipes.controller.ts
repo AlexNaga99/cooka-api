@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
@@ -49,6 +50,7 @@ export class RecipesController {
     private readonly ratingsService: RatingsService,
   ) {}
 
+  @Throttle({ short: { limit: 2, ttl: 1000 }, long: { limit: 20, ttl: 60_000 } })
   @Post()
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
@@ -110,6 +112,7 @@ export class RecipesController {
   @ApiResponse({ status: 200, type: RecipeFeedResponseDto })
   @ApiResponse({ status: 401, type: ErrorResponseDto })
   async feed(
+    @CurrentUser() user: FirebaseUser,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
   ): Promise<RecipeFeedResponseDto> {
@@ -117,7 +120,7 @@ export class RecipesController {
       parseInt(limit ?? '20', 10) || 20,
       50,
     );
-    return this.recipesService.getFeed(limitNum, cursor ?? null);
+    return this.recipesService.getFeed(limitNum, cursor ?? null, user.uid);
   }
 
   @Get('by-ids')
@@ -174,13 +177,15 @@ export class RecipesController {
   @ApiQuery({ name: 'cursor', required: false, type: String })
   @ApiResponse({ status: 200, type: CommentListResponseDto })
   @ApiResponse({ status: 404, type: ErrorResponseDto })
+  @UseGuards(OptionalFirebaseAuthGuard)
   async getComments(
     @Param('id') id: string,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
+    @CurrentUser() user?: FirebaseUser,
   ): Promise<CommentListResponseDto> {
     const limitNum = Math.min(parseInt(limit ?? '20', 10) || 20, 50);
-    return this.ratingsService.getComments(id, limitNum, cursor ?? null);
+    return this.ratingsService.getComments(id, limitNum, cursor ?? null, user?.uid);
   }
 
   @Get(':id')
@@ -264,6 +269,7 @@ export class RecipesController {
     return rating ? { rated: true, stars: rating.stars } : { rated: false };
   }
 
+  @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 60, ttl: 60_000 } })
   @Post(':id/rate')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
@@ -283,6 +289,25 @@ export class RecipesController {
     return this.ratingsService.rate(id, user.uid, dto.stars);
   }
 
+  @Delete(':id/comments/:commentId')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remover comentário (autor do comentário ou da receita)' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'commentId' })
+  @ApiResponse({ status: 403, type: ErrorResponseDto })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async deleteComment(
+    @Param('id') id: string,
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<object> {
+    await this.ratingsService.deleteComment(id, commentId, user.uid);
+    return {};
+  }
+
+  @Throttle({ short: { limit: 3, ttl: 1000 }, long: { limit: 30, ttl: 60_000 } })
   @Post(':id/comment')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()

@@ -1,9 +1,11 @@
+import { markAccountDeleted } from '../common/utils/account-status';
 import {
   Injectable,
   NotFoundException,
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestoreDb, getFirebaseAuth } from '../config/firebase.config';
 import { User } from '../models';
 import { AuthService } from '../auth/auth.service';
@@ -33,14 +35,14 @@ export class SocialService {
     return data.deletedAt != null;
   }
 
-  async getProfile(userId: string): Promise<UserProfileResponseDto> {
+  async getProfile(userId: string, includePrivate = false): Promise<UserProfileResponseDto> {
     const doc = await this.db.collection('users').doc(userId).get();
     if (!doc.exists) throw new NotFoundException('Usuário não encontrado');
     const data = doc.data() as User & { createdAt?: { toDate: () => Date }; deletedAt?: unknown };
     if (this.userHasDeleted(data)) {
       throw new NotFoundException('Usuário não encontrado');
     }
-    return this.authService.toUserResponse(data, doc.id) as UserProfileResponseDto;
+    return this.authService.toUserResponse(data, doc.id, includePrivate) as UserProfileResponseDto;
   }
 
   async getAccount(uid: string): Promise<UserProfileResponseDto> {
@@ -50,7 +52,7 @@ export class SocialService {
       if (this.userHasDeleted(data)) {
         throw new NotFoundException('Conta excluída');
       }
-      return this.authService.toUserResponse(data, doc.id) as UserProfileResponseDto;
+      return this.authService.toUserResponse(data, doc.id, true) as UserProfileResponseDto;
     }
     const auth = getFirebaseAuth();
     let firebaseUser: { displayName?: string; email?: string; photoURL?: string };
@@ -72,9 +74,10 @@ export class SocialService {
       recipesCount: 0,
       favoriteRecipeIds: [] as string[],
       createdAt: now,
+      deletedAt: null,
     };
     await this.db.collection('users').doc(uid).set(newUser);
-    return this.authService.toUserResponse(newUser as User & { createdAt?: { toDate: () => Date } }, uid) as UserProfileResponseDto;
+    return this.authService.toUserResponse(newUser as User & { createdAt?: { toDate: () => Date } }, uid, true) as UserProfileResponseDto;
   }
 
   async updateProfile(uid: string, dto: AccountUpdateRequestDto): Promise<UserProfileResponseDto> {
@@ -91,17 +94,111 @@ export class SocialService {
     }
     if (dto.photoUrl !== undefined) updates.photoUrl = dto.photoUrl;
     if (Object.keys(updates).length === 0) {
-      return this.getProfile(uid);
+      return this.getProfile(uid, true);
     }
     await ref.update(updates);
-    return this.getProfile(uid);
+    return this.getProfile(uid, true);
   }
 
+  /** Apaga todos os documentos de uma query, em lotes de 400. */
+  private async deleteByQuery(query: FirebaseFirestore.Query): Promise<number> {
+    let total = 0;
+    for (;;) {
+      const snap = await query.limit(400).get();
+      if (snap.empty) break;
+      const batch = this.db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      total += snap.size;
+      if (snap.size < 400) break;
+    }
+    return total;
+  }
+
+  /**
+   * Exclusão REAL da conta (exigência Google Play / App Store):
+   * receitas (com comentários e avaliações delas), comentários e avaliações do usuário,
+   * follows (ajustando contadores dos outros), bloqueios, notificações, tokens de sessão/push,
+   * e o usuário no Firebase Auth. O documento users/{uid} fica anonimizado com deletedAt
+   * (tombstone) para impedir que o getAccount recrie a conta em uso de token antigo.
+   * Denúncias (reports) são mantidas como evidência de moderação.
+   */
   async deleteAccount(uid: string): Promise<void> {
     const ref = this.db.collection('users').doc(uid);
     const doc = await ref.get();
     if (!doc.exists) return;
-    await ref.update({ deletedAt: new Date() });
+
+    // 1) Bloqueia imediatamente: a partir daqui os guards recusam o token.
+    await ref.update({
+      deletedAt: new Date(),
+      name: 'Usuário removido',
+      nameLower: '',
+      email: '',
+      photoUrl: null,
+      favoriteRecipeIds: [],
+      recipesCount: 0,
+    });
+    markAccountDeleted(uid);
+
+    // 2) Receitas do usuário e tudo que depende delas.
+    const recipes = await this.db.collection('recipes').where('authorId', '==', uid).get();
+    for (const r of recipes.docs) {
+      await this.deleteByQuery(this.db.collection('comments').where('recipeId', '==', r.id));
+      await this.deleteByQuery(this.db.collection('ratings').where('recipeId', '==', r.id));
+      await r.ref.delete();
+    }
+
+    // 3) Comentários e avaliações do usuário em receitas de outros.
+    await this.deleteByQuery(this.db.collection('comments').where('authorId', '==', uid));
+    const myRatings = await this.db.collection('ratings').where('userId', '==', uid).get();
+    for (const rt of myRatings.docs) {
+      const { recipeId, stars } = rt.data() as { recipeId: string; stars: number };
+      const recipeRef = this.db.collection('recipes').doc(recipeId);
+      await this.db.runTransaction(async (tx) => {
+        const rec = await tx.get(recipeRef);
+        if (!rec.exists) return;
+        const d = rec.data() as { ratingSum?: number; ratingsCount?: number };
+        const count = Math.max(0, (d.ratingsCount ?? 1) - 1);
+        const sum = Math.max(0, (d.ratingSum ?? stars) - stars);
+        tx.update(recipeRef, { ratingSum: sum, ratingsCount: count, ratingAvg: count > 0 ? sum / count : 0 });
+      });
+      await rt.ref.delete();
+    }
+
+    // 4) Follows nos dois sentidos, ajustando contadores dos outros usuários.
+    const [following, followers] = await Promise.all([
+      this.db.collection('follows').where('followerId', '==', uid).get(),
+      this.db.collection('follows').where('followingId', '==', uid).get(),
+    ]);
+    for (const f of following.docs) {
+      const { followingId } = f.data() as { followingId: string };
+      await this.db.collection('users').doc(followingId)
+        .update({ followersCount: FieldValue.increment(-1) }).catch(() => undefined);
+      await f.ref.delete();
+    }
+    for (const f of followers.docs) {
+      const { followerId } = f.data() as { followerId: string };
+      await this.db.collection('users').doc(followerId)
+        .update({ followingCount: FieldValue.increment(-1) }).catch(() => undefined);
+      await f.ref.delete();
+    }
+    await ref.update({ followersCount: 0, followingCount: 0 });
+
+    // 5) Bloqueios, notificações, sessões e push tokens.
+    await Promise.all([
+      this.deleteByQuery(this.db.collection('blocks').where('blockerId', '==', uid)),
+      this.deleteByQuery(this.db.collection('blocks').where('blockedId', '==', uid)),
+      this.deleteByQuery(this.db.collection('notifications').where('userId', '==', uid)),
+      this.deleteByQuery(this.db.collection('refresh_tokens').where('uid', '==', uid)),
+      this.deleteByQuery(this.db.collection('pushTokens').where('userId', '==', uid)),
+    ]);
+
+    // 6) Remove o login (Firebase Auth). Ignora se já não existir.
+    try {
+      await getFirebaseAuth().deleteUser(uid);
+    } catch (err) {
+      this.logger.warn(`deleteUser(${uid}) no Firebase Auth falhou: ${(err as Error).message}`);
+    }
   }
 
   async follow(followerId: string, followingId: string): Promise<FollowResponseDto> {
@@ -125,17 +222,10 @@ export class SocialService {
     }
 
     const followRef = this.db.collection('follows').doc();
-    await followRef.set({ followerId, followingId });
-
     const batch = this.db.batch();
-    const followerRef = this.db.collection('users').doc(followerId);
-    const followingRef = this.db.collection('users').doc(followingId);
-    const followerDoc = await followerRef.get();
-    const followingDoc2 = await followingRef.get();
-    const followerCount = (followerDoc.data() as { followingCount?: number })?.followingCount ?? 0;
-    const followingCount = (followingDoc2.data() as { followersCount?: number })?.followersCount ?? 0;
-    batch.update(followerRef, { followingCount: followerCount + 1 });
-    batch.update(followingRef, { followersCount: followingCount + 1 });
+    batch.set(followRef, { followerId, followingId });
+    batch.update(this.db.collection('users').doc(followerId), { followingCount: FieldValue.increment(1) });
+    batch.update(this.db.collection('users').doc(followingId), { followersCount: FieldValue.increment(1) });
     await batch.commit();
 
     const followerProfile = await this.getProfile(followerId);
@@ -168,8 +258,8 @@ export class SocialService {
 
     const current = (data.favoriteRecipeIds ?? []).filter(Boolean);
     if (current.includes(recipeId)) return;
-    const next = [...current, recipeId];
-    await userRef.update({ favoriteRecipeIds: next });
+    if (current.length >= 2000) throw new BadRequestException('Limite de favoritos atingido');
+    await userRef.update({ favoriteRecipeIds: FieldValue.arrayUnion(recipeId) });
 
     const authorId = recipeData.authorId;
     if (authorId && authorId !== uid) {
@@ -194,9 +284,26 @@ export class SocialService {
     if (this.userHasDeleted(data)) throw new NotFoundException('Usuário não encontrado');
 
     const current = (data.favoriteRecipeIds ?? []).filter(Boolean);
-    const next = current.filter((id) => id !== recipeId);
-    if (next.length === current.length) return;
-    await userRef.update({ favoriteRecipeIds: next });
+    if (!current.includes(recipeId)) return;
+    await userRef.update({ favoriteRecipeIds: FieldValue.arrayRemove(recipeId) });
+  }
+
+  /** Bloqueia um usuário: remove vínculos de follow e oculta seus comentários. */
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    if (blockerId === blockedId) throw new BadRequestException('Não é possível bloquear a si mesmo');
+    const target = await this.db.collection('users').doc(blockedId).get();
+    if (!target.exists) throw new NotFoundException('Usuário não encontrado');
+    await this.db
+      .collection('blocks')
+      .doc(`${blockerId}_${blockedId}`)
+      .set({ blockerId, blockedId, createdAt: new Date() });
+    // Encerra follows nos dois sentidos (best effort).
+    await this.unfollow(blockerId, blockedId).catch(() => undefined);
+    await this.unfollow(blockedId, blockerId).catch(() => undefined);
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await this.db.collection('blocks').doc(`${blockerId}_${blockedId}`).delete();
   }
 
   async unfollow(followerId: string, followingId: string): Promise<void> {
@@ -214,14 +321,8 @@ export class SocialService {
     const batch = this.db.batch();
     batch.delete(followSnap.docs[0].ref);
 
-    const followerRef = this.db.collection('users').doc(followerId);
-    const followingRef = this.db.collection('users').doc(followingId);
-    const followerDoc = await followerRef.get();
-    const followingDoc2 = await followingRef.get();
-    const followerCount = Math.max(0, ((followerDoc.data() as { followingCount?: number })?.followingCount ?? 1) - 1);
-    const followingCount = Math.max(0, ((followingDoc2.data() as { followersCount?: number })?.followersCount ?? 1) - 1);
-    batch.update(followerRef, { followingCount: followerCount });
-    batch.update(followingRef, { followersCount: followingCount });
+    batch.update(this.db.collection('users').doc(followerId), { followingCount: FieldValue.increment(-1) });
+    batch.update(this.db.collection('users').doc(followingId), { followersCount: FieldValue.increment(-1) });
     await batch.commit();
   }
 

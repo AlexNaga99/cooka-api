@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Controller,
   Delete,
@@ -173,6 +174,7 @@ export class SocialController {
     return this.recipesService.getByAuthorId(id, requestUserId, limitNum, cursor ?? null, status ?? undefined);
   }
 
+  @Throttle({ short: { limit: 3, ttl: 1000 }, long: { limit: 40, ttl: 60_000 } })
   @Post('follow/:userId')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
@@ -187,6 +189,35 @@ export class SocialController {
     @CurrentUser() user: FirebaseUser,
   ): Promise<FollowResponseDto> {
     return this.socialService.follow(user.uid, userId);
+  }
+
+  @Post('users/:id/block')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Bloquear usuário (oculta comentários e encerra follows)' })
+  @ApiParam({ name: 'id', description: 'ID do usuário a bloquear' })
+  @ApiResponse({ status: 404, type: ErrorResponseDto })
+  async blockUser(
+    @Param('id') id: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<{ success: true }> {
+    await this.socialService.blockUser(user.uid, id);
+    return { success: true };
+  }
+
+  @Delete('users/:id/block')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Desbloquear usuário' })
+  @ApiParam({ name: 'id', description: 'ID do usuário a desbloquear' })
+  async unblockUser(
+    @Param('id') id: string,
+    @CurrentUser() user: FirebaseUser,
+  ): Promise<{ success: true }> {
+    await this.socialService.unblockUser(user.uid, id);
+    return { success: true };
   }
 
   @Delete('follow/:userId')

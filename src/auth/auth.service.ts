@@ -35,7 +35,7 @@ export class AuthService {
     let user: UserResponseDto;
     if (userDoc.exists) {
       const data = userDoc.data() as User & { createdAt?: { toDate: () => Date } };
-      user = this.toUserResponse(data, uid);
+      user = this.toUserResponse(data, uid, true);
     } else {
       user = {
         id: uid,
@@ -55,7 +55,7 @@ export class AuthService {
     const expiresIn = decoded.exp
       ? Math.max(0, decoded.exp - Math.floor(Date.now() / 1000))
       : 3600;
-    const refreshToken = this.createBackendRefreshToken(uid, db);
+    const refreshToken = await this.createBackendRefreshToken(uid, db);
     return {
       uid,
       user,
@@ -70,14 +70,14 @@ export class AuthService {
    * mas grava apenas o SHA-256 truncado no Firestore — mesmo padrão usado em pushTokens.
    * Lookup por hash impede que quem tem acesso ao Firestore consiga fazer replay.
    */
-  private createBackendRefreshToken(uid: string, db: ReturnType<typeof getFirestoreDb>): string {
+  private async createBackendRefreshToken(uid: string, db: ReturnType<typeof getFirestoreDb>): Promise<string> {
     const token = BACKEND_REFRESH_TOKEN_PREFIX + randomBytes(32).toString('hex');
     const tokenHash = this.hashRefreshToken(token);
     const expiresDays = this.configService.get<number>('refreshToken.expiresDays') ?? 30;
     const expiresAt = Timestamp.fromDate(
       new Date(Date.now() + expiresDays * 24 * 60 * 60 * 1000),
     );
-    db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).set({ uid, expiresAt });
+    await db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).set({ uid, expiresAt });
     return token;
   }
 
@@ -85,7 +85,11 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex').substring(0, 32);
   }
 
-  toUserResponse(data: User & { createdAt?: { toDate?: () => Date } }, id: string): UserResponseDto {
+  toUserResponse(
+    data: User & { createdAt?: { toDate?: () => Date } },
+    id: string,
+    includePrivate = false,
+  ): UserResponseDto {
     const createdAt = data.createdAt as unknown;
     const dateStr =
       typeof createdAt === 'object' &&
@@ -99,16 +103,26 @@ export class AuthService {
     return {
       id: id ?? (data as User & { id?: string }).id,
       name: data.name,
-      email: data.email,
+      // PII: e-mail e favoritos só são devolvidos ao próprio usuário.
+      email: includePrivate ? data.email : '',
       photoUrl: data.photoUrl ?? null,
       followersCount: data.followersCount ?? 0,
       followingCount: data.followingCount ?? 0,
       popularityScore: data.popularityScore ?? 0,
       recipesCount: data.recipesCount ?? 0,
-      favoriteRecipeIds: data.favoriteRecipeIds ?? [],
+      favoriteRecipeIds: includePrivate ? (data.favoriteRecipeIds ?? []) : [],
       createdAt: dateStr,
       isAdsFree: data.isAdsFree ?? false,
     };
+  }
+
+  /** Revoga o refresh token informado (logout). Idempotente. */
+  async revokeRefreshToken(refreshToken: string): Promise<void> {
+    if (!refreshToken.startsWith(BACKEND_REFRESH_TOKEN_PREFIX)) return;
+    await getFirestoreDb()
+      .collection(REFRESH_TOKENS_COLLECTION)
+      .doc(this.hashRefreshToken(refreshToken))
+      .delete();
   }
 
   async refreshToken(refreshToken: string): Promise<AuthRefreshResponseDto> {
@@ -139,7 +153,7 @@ export class AuthService {
     const expiresInSeconds = 3600;
 
     // Rotação: gera novo par e invalida o hash anterior.
-    const newRefreshToken = this.createBackendRefreshToken(uid, db);
+    const newRefreshToken = await this.createBackendRefreshToken(uid, db);
     await db.collection(REFRESH_TOKENS_COLLECTION).doc(tokenHash).delete();
 
     return {

@@ -609,7 +609,26 @@ export class RecipesService {
     return this.getById(ref.id, authorId);
   }
 
+  /** IDs de usuários bloqueados por requestUserId. */
+  private async getBlockedIds(userId?: string): Promise<Set<string>> {
+    if (!userId) return new Set();
+    const snap = await this.db.collection('blocks').where('blockerId', '==', userId).get();
+    return new Set(snap.docs.map((d) => (d.data() as { blockedId: string }).blockedId));
+  }
+
+  private readonly authorCache = new Map<string, { at: number; value: UserResponseDto | undefined }>();
+
+  /** Autor com cache de 30s: páginas repetem os mesmos autores, evita 1 leitura por item. */
   private async getAuthor(authorId: string): Promise<UserResponseDto | undefined> {
+    const hit = this.authorCache.get(authorId);
+    if (hit && Date.now() - hit.at < 30_000) return hit.value;
+    const value = await this.fetchAuthor(authorId);
+    if (this.authorCache.size > 2000) this.authorCache.clear();
+    this.authorCache.set(authorId, { at: Date.now(), value });
+    return value;
+  }
+
+  private async fetchAuthor(authorId: string): Promise<UserResponseDto | undefined> {
     const userDoc = await this.db.collection('users').doc(authorId).get();
     if (!userDoc.exists) return undefined;
     const data = userDoc.data() as User & { createdAt?: unknown };

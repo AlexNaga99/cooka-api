@@ -1,10 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString,
+  IsNotEmpty,
   IsArray,
   IsOptional,
   IsUrl,
   IsIn,
+  Matches,
   MaxLength,
   ArrayMaxSize,
 } from 'class-validator';
@@ -18,10 +20,13 @@ const STEPS_MAX = 10_000;
 const URL_MAX = 2048;
 const CATEGORIES_MAX = 5;
 const TAGS_MAX = 15;
+// Evita hotlink/pixel de rastreio: mídia precisa estar no Firebase Storage do app.
+const MEDIA_URL_RE = /^https:\/\/(firebasestorage\.googleapis\.com|storage\.googleapis\.com|[a-z0-9-]+\.firebasestorage\.app)\//;
 
 export class RecipeCreateRequestDto {
   @ApiProperty()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(TITLE_MAX)
   title: string;
   @ApiPropertyOptional({
@@ -51,12 +56,14 @@ export class RecipeCreateRequestDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
+  @IsUrl({ protocols: ['https'], require_protocol: true }, { each: true })
+  @Matches(MEDIA_URL_RE, { each: true, message: 'mediaUrls deve apontar para o Firebase Storage' })
   @MaxLength(URL_MAX, { each: true })
   mediaUrls?: string[];
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @Matches(MEDIA_URL_RE, { message: 'videoUrl deve apontar para o Firebase Storage' })
   videoUrl?: string | null;
   @ApiPropertyOptional({
     type: [String],
@@ -115,12 +122,14 @@ export class RecipeUpdateRequestDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
+  @IsUrl({ protocols: ['https'], require_protocol: true }, { each: true })
+  @Matches(MEDIA_URL_RE, { each: true, message: 'mediaUrls deve apontar para o Firebase Storage' })
   @MaxLength(URL_MAX, { each: true })
   mediaUrls?: string[];
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @Matches(MEDIA_URL_RE, { message: 'videoUrl deve apontar para o Firebase Storage' })
   videoUrl?: string | null;
   @ApiPropertyOptional({
     type: [String],
