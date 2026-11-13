@@ -7,7 +7,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 
 let firebaseApp: App;
 
-function getServiceAccountFromEnv(): object {
+export function getServiceAccountFromEnv(): object {
   const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (!raw || !raw.trim()) {
     throw new Error('Firebase credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS (path ou base64).');
