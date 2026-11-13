@@ -9,6 +9,7 @@ import { SocialModule } from './social/social.module';
 import { SearchModule } from './search/search.module';
 import { CategoriesTagsModule } from './categories-tags/categories-tags.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { LegalModule } from './legal/legal.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     SearchModule,
     CategoriesTagsModule,
     NotificationsModule,
+    LegalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
