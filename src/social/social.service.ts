@@ -302,6 +302,23 @@ export class SocialService {
     await this.unfollow(blockedId, blockerId).catch(() => undefined);
   }
 
+  /** Perfis públicos dos usuários que o requester bloqueou. */
+  async getBlockedUsers(blockerId: string): Promise<{ items: UserProfileResponseDto[] }> {
+    const snap = await this.db.collection('blocks').where('blockerId', '==', blockerId).get();
+    const ids = snap.docs.map((d) => (d.data() as { blockedId: string }).blockedId).slice(0, 200);
+    if (ids.length === 0) return { items: [] };
+    const docs = await this.db.getAll(...ids.map((id) => this.db.collection('users').doc(id)));
+    const items = docs
+      .filter((d) => d.exists)
+      .map((d) =>
+        this.authService.toUserResponse(
+          d.data() as User & { createdAt?: { toDate: () => Date } },
+          d.id,
+        ) as UserProfileResponseDto,
+      );
+    return { items };
+  }
+
   async unblockUser(blockerId: string, blockedId: string): Promise<void> {
     await this.db.collection('blocks').doc(`${blockerId}_${blockedId}`).delete();
   }

@@ -191,6 +191,14 @@ export class SocialController {
     return this.socialService.follow(user.uid, userId);
   }
 
+  @Get('account/blocks')
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Listar usuários bloqueados' })
+  async getBlocked(@CurrentUser() user: FirebaseUser): Promise<{ items: UserProfileResponseDto[] }> {
+    return this.socialService.getBlockedUsers(user.uid);
+  }
+
   @Post('users/:id/block')
   @UseGuards(FirebaseAuthGuard)
   @ApiBearerAuth()
