@@ -45,6 +45,16 @@ export class SocialService {
     return this.authService.toUserResponse(data, doc.id, includePrivate) as UserProfileResponseDto;
   }
 
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const snap = await this.db
+      .collection('follows')
+      .where('followerId', '==', followerId)
+      .where('followingId', '==', followingId)
+      .limit(1)
+      .get();
+    return !snap.empty;
+  }
+
   async getAccount(uid: string): Promise<UserProfileResponseDto> {
     const doc = await this.db.collection('users').doc(uid).get();
     if (doc.exists) {

@@ -1,7 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserResponseDto } from '../../auth/dto/auth-verify.dto';
 
-export class UserProfileResponseDto extends UserResponseDto {}
+export class UserProfileResponseDto extends UserResponseDto {
+  @ApiPropertyOptional({ description: 'Se o usuário logado segue este perfil (só presente quando autenticado)' })
+  isFollowing?: boolean;
+}
 
 export class FollowResponseDto {
   @ApiProperty()

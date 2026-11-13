@@ -145,12 +145,20 @@ export class SocialController {
   }
 
   @Get('users/:id/profile')
+  @UseGuards(OptionalFirebaseAuthGuard)
   @ApiOperation({ summary: 'Perfil do usuário (cozinheiro)' })
   @ApiParam({ name: 'id', description: 'ID do usuário' })
   @ApiResponse({ status: 200, type: UserProfileResponseDto })
   @ApiResponse({ status: 404, type: ErrorResponseDto })
-  async getProfile(@Param('id') id: string): Promise<UserProfileResponseDto> {
-    return this.socialService.getProfile(id);
+  async getProfile(
+    @Param('id') id: string,
+    @CurrentUser() user?: FirebaseUser,
+  ): Promise<UserProfileResponseDto> {
+    const profile = await this.socialService.getProfile(id);
+    if (user?.uid && user.uid !== id) {
+      profile.isFollowing = await this.socialService.isFollowing(user.uid, id);
+    }
+    return profile;
   }
 
   @Get('users/:id/recipes')
