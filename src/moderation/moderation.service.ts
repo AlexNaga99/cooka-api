@@ -310,9 +310,10 @@ export class ModerationService implements OnModuleInit, OnModuleDestroy {
 
   private async notifyAuthor(data: RecipeDoc, recipeId: string, title: string, body: string): Promise<void> {
     try {
-      await this.notifications.createNotification(data.authorId, NotificationType.MODERATION, title, body, {
+      const n = await this.notifications.createNotification(data.authorId, NotificationType.MODERATION, title, body, {
         recipeId,
       });
+      await this.notifications.sendPush(data.authorId, n.id, title, body, { recipeId });
     } catch (e) {
       this.logger.warn(`Notificação de moderação falhou: ${(e as Error).message}`);
     }

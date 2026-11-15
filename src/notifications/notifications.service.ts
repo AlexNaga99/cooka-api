@@ -185,12 +185,63 @@ export class NotificationsService {
     if (data) {
       if (data.recipeId) docData.recipeId = data.recipeId;
       if (data.userId) docData.relatedUserId = data.userId;
+      // O app lê o destino da notificação em `data` (recipeId/userId).
+      const payload: Record<string, string> = {};
+      if (data.recipeId) payload.recipeId = data.recipeId;
+      if (data.userId) payload.userId = data.userId;
+      if (Object.keys(payload).length) docData.data = payload;
     }
 
     await ref.set(docData);
 
     const doc = await ref.get();
     return this.mapToDto(doc);
+  }
+
+  /** Envia o push (FCM) de uma notificação já criada para todos os aparelhos do usuário. Nunca lança. */
+  async sendPush(
+    userId: string,
+    notificationId: string,
+    title: string,
+    body: string,
+    data?: { recipeId?: string; userId?: string },
+  ): Promise<void> {
+    try {
+      const tokens = await this.getPushTokens(userId);
+      if (tokens.length === 0) return;
+      const messaging = getFirebaseMessaging();
+      for (const t of tokens) {
+        try {
+          await messaging.send({
+            token: t.token,
+            notification: { title, body },
+            data: {
+              notificationId,
+              type: 'MODERATION',
+              ...(data?.recipeId ? { recipeId: data.recipeId } : {}),
+              ...(data?.userId ? { userId: data.userId } : {}),
+            },
+            android: {
+              priority: 'high',
+              notification: {
+                channelId: 'cooka_notifications',
+                priority: 'high',
+                icon: 'notification_icon',
+                color: '#FF6B35',
+              },
+            },
+          });
+        } catch (e) {
+          const code = (e as { code?: string }).code ?? '';
+          this.logger.warn(`Push falhou (${code || (e as Error).message})`);
+          if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
+            await this.removePushToken(userId, t.token);
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Push não enviado: ${(e as Error).message}`);
+    }
   }
 
   private mapToDto(doc: FirebaseFirestore.DocumentSnapshot): NotificationDto {
@@ -200,7 +251,14 @@ export class NotificationsService {
       type: data.type,
       title: data.title,
       body: data.body,
-      data: data.data,
+      data:
+        data.data ??
+        (data.recipeId || data.relatedUserId
+          ? {
+              ...(data.recipeId ? { recipeId: data.recipeId } : {}),
+              ...(data.relatedUserId ? { userId: data.relatedUserId } : {}),
+            }
+          : undefined),
       read: data.read ?? false,
       createdAt: toISOString(data.createdAt),
     };
