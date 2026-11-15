@@ -12,6 +12,8 @@ import { AuthService } from '../auth/auth.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/dto/notification.dto';
 import { isHiddenFromOthers } from '../moderation/recipe-status';
+import { assertCleanText } from '../moderation/text-filter';
+import { ModerationService } from '../moderation/moderation.service';
 import type {
   UserProfileResponseDto,
   FollowResponseDto,
@@ -26,6 +28,7 @@ export class SocialService {
   constructor(
     private readonly authService: AuthService,
     private readonly notificationsService: NotificationsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   private get db() {
@@ -98,12 +101,19 @@ export class SocialService {
     const data = doc.data() as Record<string, unknown>;
     if (this.userHasDeleted(data)) throw new NotFoundException('Conta excluída');
 
+    assertCleanText({ name: dto.name });
     const updates: Record<string, unknown> = {};
     if (dto.name !== undefined) {
       updates.name = dto.name;
       updates.nameLower = dto.name.toLowerCase();
     }
-    if (dto.photoUrl !== undefined) updates.photoUrl = dto.photoUrl;
+    if (dto.photoUrl !== undefined) {
+      // O app reenvia a foto atual a cada salvamento: só analisa quando ela realmente mudou.
+      if (dto.photoUrl && dto.photoUrl !== data.photoUrl) {
+        await this.moderation.assertProfilePhotoOk(dto.photoUrl);
+      }
+      updates.photoUrl = dto.photoUrl;
+    }
     if (Object.keys(updates).length === 0) {
       return this.getProfile(uid, true);
     }

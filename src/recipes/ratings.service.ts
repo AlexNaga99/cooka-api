@@ -339,7 +339,7 @@ export class RatingsService {
     if (isHiddenFromOthers(recipeData.status)) {
       throw new NotFoundException('Receita não encontrada');
     }
-    assertCleanText({ comentário: text });
+    assertCleanText({ comment: text });
 
     let effectiveParentId: string | null = null;
     let notifyUserId: string | null = null;

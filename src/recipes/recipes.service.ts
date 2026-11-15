@@ -65,10 +65,10 @@ export class RecipesService {
   async create(authorId: string, dto: RecipeCreateRequestDto): Promise<RecipeResponseDto> {
     await this.validateCategoryAndTagIds(dto.categories, dto.tags);
     assertCleanText({
-      título: dto.title,
-      descrição: dto.description,
-      ingredientes: dto.ingredients,
-      'modo de preparo': dto.preparationSteps,
+      title: dto.title,
+      description: dto.description,
+      ingredients: dto.ingredients,
+      steps: dto.preparationSteps,
     });
     // Publicar = entrar em análise automática; só vira `published` depois de aprovada.
     const wantsPublish = (dto.status ?? DEFAULT_STATUS) === DEFAULT_STATUS;
@@ -528,10 +528,10 @@ export class RecipesService {
     }
     await this.validateCategoryAndTagIds(dto.categories, dto.tags);
     assertCleanText({
-      título: dto.title,
-      descrição: dto.description,
-      ingredientes: dto.ingredients,
-      'modo de preparo': dto.preparationSteps,
+      title: dto.title,
+      description: dto.description,
+      ingredients: dto.ingredients,
+      steps: dto.preparationSteps,
     });
     const updates: Record<string, unknown> = {};
     if (dto.title !== undefined) {
@@ -606,10 +606,10 @@ export class RecipesService {
     }
     await this.validateCategoryAndTagIds(dto.categories, dto.tags);
     assertCleanText({
-      título: dto.title,
-      descrição: dto.description,
-      ingredientes: dto.ingredients,
-      'modo de preparo': dto.preparationSteps,
+      title: dto.title,
+      description: dto.description,
+      ingredients: dto.ingredients,
+      steps: dto.preparationSteps,
     });
     const ref = this.db.collection('recipes').doc();
     const now = new Date();

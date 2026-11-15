@@ -1,4 +1,12 @@
-import { Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  ServiceUnavailableException,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { getFirestoreDb } from '../config/firebase.config';
 import { getStorage } from 'firebase-admin/storage';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -8,6 +16,19 @@ import { transitionRecipeStatus } from './recipe-status';
 
 const SWEEP_INTERVAL_MS = 2 * 60 * 1000;
 const SWEEP_BATCH = 20;
+
+export type AdminStatus = 'review' | 'pending' | 'rejected';
+export const ADMIN_STATUSES: AdminStatus[] = ['review', 'pending', 'rejected'];
+
+/** Firestore Timestamp / Date / string -> ISO. */
+function toIso(v: unknown): string | null {
+  if (!v) return null;
+  if (typeof v === 'string') return v;
+  const t = v as { toDate?: () => Date };
+  if (typeof t.toDate === 'function') return t.toDate().toISOString();
+  if (v instanceof Date) return v.toISOString();
+  return null;
+}
 
 interface RecipeDoc {
   authorId: string;
@@ -129,51 +150,161 @@ export class ModerationService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // ---- ações administrativas ----
-
-  async listForReview(limit = 50): Promise<Array<Record<string, unknown>>> {
-    const snap = await this.db.collection('recipes').where('status', '==', 'review').limit(limit).get();
-    const items: Array<Record<string, unknown>> = [];
-    for (const d of snap.docs) {
-      const reports = await this.db
-        .collection('reports')
-        .where('targetType', '==', 'recipe')
-        .where('targetId', '==', d.id)
-        .get();
-      const x = d.data();
-      items.push({
-        id: d.id,
-        title: x.title,
-        authorId: x.authorId,
-        mediaUrls: x.mediaUrls,
-        videoUrl: x.videoUrl ?? null,
-        moderation: x.moderation ?? null,
-        reports: reports.docs.map((r) => ({ reason: r.data().reason, description: r.data().description })),
+  /**
+   * Foto de perfil: análise síncrona (não dá para "publicar e revisar depois").
+   * Qualquer coisa que não seja aprovada de cara é barrada e a imagem enviada é apagada.
+   * Se o Vision falhar, barra também (fail-closed) e o app pede para tentar de novo.
+   */
+  async assertProfilePhotoOk(url: string): Promise<void> {
+    if (process.env.MODERATION_DISABLED === 'true') return;
+    let verdict: 'approved' | 'review' | 'rejected';
+    try {
+      verdict = (await this.vision.analyzeUrl(url)).verdict;
+    } catch (e) {
+      this.logger.warn(`Análise da foto de perfil falhou: ${(e as Error).message}`);
+      throw new ServiceUnavailableException({
+        message: 'Não foi possível verificar a foto agora. Tente novamente em instantes.',
+        code: 'IMAGE_CHECK_FAILED',
       });
     }
-    return items;
+    if (verdict === 'approved') return;
+    await this.deleteImages([url]);
+    throw new BadRequestException({
+      message: 'Essa foto não segue as regras do Cooka. Escolha outra imagem.',
+      code: 'IMAGE_BLOCKED',
+      field: 'photo',
+    });
+  }
+
+  // ---- ações administrativas ----
+
+  /** Lista receitas por status (padrão: `review`) com a receita completa e os dados do autor. */
+  async listForReview(
+    status: AdminStatus = 'review',
+    limit = 50,
+  ): Promise<{ counts: Record<string, number>; items: Array<Record<string, unknown>> }> {
+    const snap = await this.db.collection('recipes').where('status', '==', status).limit(limit).get();
+    const authors = new Map<string, Record<string, unknown>>();
+    const items: Array<Record<string, unknown>> = [];
+    for (const d of snap.docs) {
+      items.push(await this.toAdminItem(d.id, d.data(), authors));
+    }
+    // Mais antigas primeiro (fila): ordena em memória para não exigir índice composto.
+    items.sort((a, b) => String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')));
+    return { counts: await this.statusCounts(), items };
+  }
+
+  async getForAdmin(recipeId: string): Promise<Record<string, unknown>> {
+    const doc = await this.db.collection('recipes').doc(recipeId).get();
+    if (!doc.exists) throw new NotFoundException('Receita não encontrada');
+    return this.toAdminItem(doc.id, doc.data() as Record<string, unknown>, new Map());
+  }
+
+  private async statusCounts(): Promise<Record<string, number>> {
+    const out: Record<string, number> = {};
+    for (const s of ['review', 'pending', 'rejected'] as const) {
+      try {
+        const agg = await this.db.collection('recipes').where('status', '==', s).count().get();
+        out[s] = agg.data().count;
+      } catch {
+        out[s] = 0;
+      }
+    }
+    return out;
+  }
+
+  private async toAdminItem(
+    id: string,
+    x: Record<string, unknown>,
+    authors: Map<string, Record<string, unknown>>,
+  ): Promise<Record<string, unknown>> {
+    const reports = await this.db
+      .collection('reports')
+      .where('targetType', '==', 'recipe')
+      .where('targetId', '==', id)
+      .get();
+    const authorId = String(x.authorId ?? '');
+    let author = authors.get(authorId);
+    if (!author) {
+      author = await this.loadAuthor(authorId);
+      authors.set(authorId, author);
+    }
+    return {
+      id,
+      status: x.status ?? 'published',
+      title: x.title ?? '',
+      description: x.description ?? '',
+      ingredients: x.ingredients ?? null,
+      preparationSteps: x.preparationSteps ?? null,
+      categories: x.categories ?? [],
+      tags: x.tags ?? [],
+      mediaUrls: x.mediaUrls ?? [],
+      videoUrl: x.videoUrl ?? null,
+      createdAt: toIso(x.createdAt),
+      moderation: x.moderation ?? null,
+      reports: reports.docs.map((r) => ({ reason: r.data().reason, description: r.data().description })),
+      author,
+    };
+  }
+
+  private async loadAuthor(authorId: string): Promise<Record<string, unknown>> {
+    if (!authorId) return { id: '' };
+    const u = await this.db.collection('users').doc(authorId).get();
+    if (!u.exists) return { id: authorId, missing: true };
+    const d = u.data() as Record<string, unknown>;
+    let reportsAgainst = 0;
+    try {
+      const agg = await this.db
+        .collection('reports')
+        .where('targetType', '==', 'user')
+        .where('targetId', '==', authorId)
+        .count()
+        .get();
+      reportsAgainst = agg.data().count;
+    } catch {
+      /* contagem é só informativa */
+    }
+    return {
+      id: authorId,
+      name: d.name ?? '',
+      email: d.email ?? '',
+      photoUrl: d.photoUrl ?? null,
+      recipesCount: d.recipesCount ?? 0,
+      followersCount: d.followersCount ?? 0,
+      createdAt: toIso(d.createdAt),
+      deleted: d.deletedAt != null,
+      reportsAgainst,
+    };
   }
 
   async approve(recipeId: string): Promise<void> {
-    const res = await transitionRecipeStatus(recipeId, 'published', {
+    const doc = await this.db.collection('recipes').doc(recipeId).get();
+    if (!doc.exists) throw new NotFoundException('Receita não encontrada');
+    const status = (doc.data() as RecipeDoc).status;
+    if (status !== 'review' && status !== 'pending') {
+      throw new BadRequestException(`Só receitas em revisão/análise podem ser aprovadas (status atual: ${status}).`);
+    }
+    await transitionRecipeStatus(recipeId, 'published', {
       moderation: { verdict: 'approved', at: new Date(), source: 'manual' },
     });
-    if (res.from === 'missing') throw new NotFoundException('Receita não encontrada');
   }
 
-  async reject(recipeId: string): Promise<void> {
+  async reject(recipeId: string, reason?: string): Promise<void> {
     const doc = await this.db.collection('recipes').doc(recipeId).get();
     if (!doc.exists) throw new NotFoundException('Receita não encontrada');
     const data = doc.data() as RecipeDoc;
+    const why = reason?.trim().slice(0, 300) || undefined;
     await transitionRecipeStatus(recipeId, 'rejected', {
-      moderation: { verdict: 'rejected', at: new Date(), source: 'manual' },
+      moderation: { verdict: 'rejected', at: new Date(), source: 'manual', ...(why ? { reason: why } : {}) },
     });
     await this.deleteImages(data.mediaUrls ?? []);
     await this.notifyAuthor(
       data,
       recipeId,
       'Receita reprovada',
-      `Sua receita "${data.title ?? ''}" foi reprovada por conter conteúdo que não segue as regras do Cooka.`,
+      `Sua receita "${data.title ?? ''}" foi reprovada por conter conteúdo que não segue as regras do Cooka.${
+        why ? ` Motivo: ${why}` : ''
+      }`,
     );
   }
 

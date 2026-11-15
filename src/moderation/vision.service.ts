@@ -86,11 +86,31 @@ export class VisionService {
     return { verdict: worst, detail };
   }
 
+  /** Analisa bytes de uma imagem local (usado só pelo script de teste `moderation:check-image`). */
+  async analyzeBytes(bytes: Buffer): Promise<{ safe: SafeSearch; verdict: Verdict }> {
+    const safe = await this.safeSearchRequest({ content: bytes.toString('base64') });
+    return { safe, verdict: judge(safe) };
+  }
+
   private max(a: Verdict, b: Verdict): Verdict {
     return ORDER.indexOf(a) >= ORDER.indexOf(b) ? a : b;
   }
 
-  private async safeSearch(gcsUri: string): Promise<SafeSearch> {
+  private safeSearch(gcsUri: string): Promise<SafeSearch> {
+    return this.safeSearchRequest({ source: { gcsImageUri: gcsUri } });
+  }
+
+  /** Analisa uma foto de perfil por URL (Firebase Storage via gs://, qualquer outra via https). */
+  async analyzeUrl(url: string): Promise<{ safe: SafeSearch; verdict: Verdict }> {
+    const uri = toGcsUri(url);
+    const image = uri ? { source: { gcsImageUri: uri } } : { source: { imageUri: url } };
+    const safe = await this.safeSearchRequest(image);
+    return { safe, verdict: judge(safe) };
+  }
+
+  private async safeSearchRequest(
+    image: { content: string } | { source: { gcsImageUri: string } } | { source: { imageUri: string } },
+  ): Promise<SafeSearch> {
     if (!this.auth) {
       this.auth = new GoogleAuth({
         credentials: getServiceAccountFromEnv() as Record<string, unknown>,
@@ -105,7 +125,7 @@ export class VisionService {
       method: 'POST',
       data: {
         requests: [
-          { image: { source: { gcsImageUri: gcsUri } }, features: [{ type: 'SAFE_SEARCH_DETECTION' }] },
+          { image, features: [{ type: 'SAFE_SEARCH_DETECTION' }] },
         ],
       },
       timeout: 20_000,

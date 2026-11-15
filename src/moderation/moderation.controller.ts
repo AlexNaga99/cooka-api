@@ -1,43 +1,83 @@
-import { CanActivate, Controller, ExecutionContext, Get, Injectable, Param, Post, UseGuards, ForbiddenException } from '@nestjs/common';
-import { ApiBearerAuth, ApiExcludeController } from '@nestjs/swagger';
-import { FirebaseAuthGuard } from '../common/guards/firebase-auth.guard';
-import { ModerationService } from './moderation.service';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiExcludeController } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ADMIN_STATUSES, AdminStatus, ModerationService } from './moderation.service';
+import { AdminGuard, checkAdminCredentials, signAdminToken } from './admin-auth';
 
-/** Só uids listados em ADMIN_UIDS (separados por vírgula) acessam a moderação manual. */
-@Injectable()
-export class AdminGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    const uid = context.switchToHttp().getRequest<{ user?: { uid?: string } }>().user?.uid;
-    const admins = (process.env.ADMIN_UIDS ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!uid || !admins.includes(uid)) throw new ForbiddenException('Acesso restrito');
-    return true;
-  }
+class AdminLoginDto {
+  @IsEmail()
+  @MaxLength(200)
+  email!: string;
+
+  @IsString()
+  @MaxLength(200)
+  password!: string;
 }
 
+class RejectDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string;
+}
+
+/** Painel de moderação (site /admin). Login próprio por ADMIN_EMAIL/ADMIN_PASSWORD. */
 @ApiExcludeController()
-@ApiBearerAuth()
-@Controller('admin/moderation')
-@UseGuards(FirebaseAuthGuard, AdminGuard)
+@Controller('admin')
 export class ModerationController {
   constructor(private readonly moderation: ModerationService) {}
 
-  @Get('queue')
-  queue() {
-    return this.moderation.listForReview();
+  /** No máximo 5 tentativas por minuto por IP. */
+  @Post('login')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async login(@Body() dto: AdminLoginDto) {
+    if (!checkAdminCredentials(dto.email, dto.password)) {
+      await new Promise((r) => setTimeout(r, 600)); // freia força bruta
+      throw new UnauthorizedException('E-mail ou senha inválidos');
+    }
+    return signAdminToken(dto.email);
   }
 
-  @Post('recipes/:id/approve')
+  @Get('moderation/queue')
+  @UseGuards(AdminGuard)
+  queue(@Query('status') status?: string) {
+    const s = (status ?? 'review') as AdminStatus;
+    if (!ADMIN_STATUSES.includes(s)) throw new BadRequestException('status inválido');
+    return this.moderation.listForReview(s);
+  }
+
+  @Get('moderation/recipes/:id')
+  @UseGuards(AdminGuard)
+  detail(@Param('id') id: string) {
+    return this.moderation.getForAdmin(id);
+  }
+
+  @Post('moderation/recipes/:id/approve')
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
   async approve(@Param('id') id: string) {
     await this.moderation.approve(id);
     return { success: true };
   }
 
-  @Post('recipes/:id/reject')
-  async reject(@Param('id') id: string) {
-    await this.moderation.reject(id);
+  @Post('moderation/recipes/:id/reject')
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
+  async reject(@Param('id') id: string, @Body() dto: RejectDto) {
+    await this.moderation.reject(id, dto.reason);
     return { success: true };
   }
 }

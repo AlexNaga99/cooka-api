@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { ModerationController, AdminGuard } from './moderation.controller';
+import { ModerationController } from './moderation.controller';
+import { AdminGuard } from './admin-auth';
 import { ModerationService } from './moderation.service';
 import { VisionService } from './vision.service';
 
 @Module({
-  imports: [AuthModule, NotificationsModule],
+  imports: [NotificationsModule],
   controllers: [ModerationController],
   providers: [ModerationService, VisionService, AdminGuard],
-  exports: [ModerationService],
+  exports: [ModerationService, VisionService],
 })
 export class ModerationModule {}
