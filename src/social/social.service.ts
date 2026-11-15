@@ -11,6 +11,7 @@ import { User } from '../models';
 import { AuthService } from '../auth/auth.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/dto/notification.dto';
+import { isHiddenFromOthers } from '../moderation/recipe-status';
 import type {
   UserProfileResponseDto,
   FollowResponseDto,
@@ -256,7 +257,7 @@ export class SocialService {
     if (!recipeDoc.exists) throw new NotFoundException('Receita não encontrada');
     const recipeData = recipeDoc.data() as { status?: string; authorId?: string; title?: string };
     const status = recipeData.status ?? 'published';
-    if (status === 'draft' && recipeData.authorId !== uid) {
+    if (isHiddenFromOthers(status) && recipeData.authorId !== uid) {
       throw new NotFoundException('Receita não encontrada');
     }
 

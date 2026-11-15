@@ -1,6 +1,6 @@
 import { User } from './user.model';
 
-export type RecipeStatus = 'published' | 'draft';
+export type RecipeStatus = 'published' | 'draft' | 'pending' | 'review' | 'rejected';
 
 export interface Recipe {
   id: string;

@@ -6,6 +6,7 @@ export enum NotificationType {
   COMMENT = 'COMMENT',
   RATING = 'RATING',
   FAVORITE = 'FAVORITE',
+  MODERATION = 'MODERATION',
 }
 
 export class NotificationDataDto {

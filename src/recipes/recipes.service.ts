@@ -13,6 +13,9 @@ import { AuthService } from '../auth/auth.service';
 import type { UserResponseDto } from '../auth/dto/auth-verify.dto';
 import { CategoriesTagsService } from '../categories-tags/categories-tags.service';
 import { RatingsService } from './ratings.service';
+import { ModerationService } from '../moderation/moderation.service';
+import { assertCleanText } from '../moderation/text-filter';
+import { isHiddenFromOthers, transitionRecipeStatus } from '../moderation/recipe-status';
 import type {
   RecipeCreateRequestDto,
   RecipeResponseDto,
@@ -30,6 +33,7 @@ export class RecipesService {
     private readonly authService: AuthService,
     private readonly categoriesTagsService: CategoriesTagsService,
     private readonly ratingsService: RatingsService,
+    private readonly moderation: ModerationService,
   ) {}
 
   private get db() {
@@ -60,7 +64,15 @@ export class RecipesService {
 
   async create(authorId: string, dto: RecipeCreateRequestDto): Promise<RecipeResponseDto> {
     await this.validateCategoryAndTagIds(dto.categories, dto.tags);
-    const status = dto.status ?? DEFAULT_STATUS;
+    assertCleanText({
+      título: dto.title,
+      descrição: dto.description,
+      ingredientes: dto.ingredients,
+      'modo de preparo': dto.preparationSteps,
+    });
+    // Publicar = entrar em análise automática; só vira `published` depois de aprovada.
+    const wantsPublish = (dto.status ?? DEFAULT_STATUS) === DEFAULT_STATUS;
+    const status = wantsPublish ? 'pending' : 'draft';
     const ref = this.db.collection('recipes').doc();
     const now = new Date();
     const ingredients = dto.ingredients ?? null;
@@ -88,16 +100,9 @@ export class RecipesService {
       createdAt: now,
     };
 
-    // Incremento desnormalizado do contador de receitas do autor.
-    // FieldValue.increment é atômico no Firestore.
-    const batch = this.db.batch();
-    batch.set(ref, data);
-    batch.set(
-      this.db.collection('users').doc(authorId),
-      { recipesCount: FieldValue.increment(1) },
-      { merge: true },
-    );
-    await batch.commit();
+    // O contador recipesCount só sobe quando a receita é aprovada (ver transitionRecipeStatus).
+    await ref.set(data);
+    if (status === 'pending') this.moderation.enqueue(ref.id);
     return this.getById(ref.id, authorId);
   }
 
@@ -106,7 +111,7 @@ export class RecipesService {
     if (!doc.exists) throw new NotFoundException('Receita não encontrada');
     const data = doc.data() as Recipe & { createdAt?: unknown; status?: string };
     const status = data.status ?? DEFAULT_STATUS;
-    if (status === 'draft' && data.authorId !== requestUserId) {
+    if (isHiddenFromOthers(status) && data.authorId !== requestUserId) {
       throw new NotFoundException('Receita não encontrada');
     }
     const author = await this.getAuthor(data.authorId);
@@ -176,7 +181,7 @@ export class RecipesService {
       if (!doc.exists) continue;
       const data = doc.data() as Recipe & { createdAt?: unknown; status?: string; authorId: string };
       const status = data.status ?? DEFAULT_STATUS;
-      if (status === 'draft' && data.authorId !== requestUserId) continue;
+      if (isHiddenFromOthers(status) && data.authorId !== requestUserId) continue;
       const author = authorById.get(data.authorId);
       const myRating = myRatingsMap.get(doc.id) ?? null;
       results.push(this.toRecipeResponse({ ...data, id: doc.id, status }, author, myRating));
@@ -261,10 +266,15 @@ export class RecipesService {
     if (!isOwn && effectiveStatus === 'draft') {
       return { items: [], nextCursor: null, hasMore: false };
     }
+    // O autor vê também as receitas em análise/revisão/reprovadas na lista de publicadas.
+    const statusFilter =
+      isOwn && effectiveStatus === 'published'
+        ? ['published', 'pending', 'review', 'rejected']
+        : [effectiveStatus];
     let query = this.db
       .collection('recipes')
       .where('authorId', '==', authorId)
-      .where('status', '==', effectiveStatus)
+      .where('status', 'in', statusFilter)
       .orderBy('createdAt', 'desc')
       .limit(limit + 1);
     if (cursor) {
@@ -512,11 +522,17 @@ export class RecipesService {
     const ref = this.db.collection('recipes').doc(id);
     const doc = await ref.get();
     if (!doc.exists) throw new NotFoundException('Receita não encontrada');
-    const data = doc.data() as { authorId: string };
+    const data = doc.data() as { authorId: string; status?: string; mediaUrls?: string[]; videoUrl?: string | null };
     if (data.authorId !== uid) {
       throw new ForbiddenException('Apenas o autor pode editar esta receita');
     }
     await this.validateCategoryAndTagIds(dto.categories, dto.tags);
+    assertCleanText({
+      título: dto.title,
+      descrição: dto.description,
+      ingredientes: dto.ingredients,
+      'modo de preparo': dto.preparationSteps,
+    });
     const updates: Record<string, unknown> = {};
     if (dto.title !== undefined) {
       updates.title = dto.title;
@@ -529,11 +545,29 @@ export class RecipesService {
     if (dto.videoUrl !== undefined) updates.videoUrl = dto.videoUrl;
     if (dto.categories !== undefined) updates.categories = dto.categories;
     if (dto.tags !== undefined) updates.tags = dto.tags;
-    if (dto.status !== undefined) updates.status = dto.status;
-    if (Object.keys(updates).length === 0) {
+    const currentStatus = data.status ?? DEFAULT_STATUS;
+    // Mídia nova precisa passar pela análise de novo (senão bastaria postar algo limpo e trocar depois).
+    const sameUrls = (a: string[] = [], b: string[] = []) =>
+      a.length === b.length && a.every((u, i) => u === b[i]);
+    const mediaChanged =
+      (dto.mediaUrls !== undefined && !sameUrls(dto.mediaUrls, data.mediaUrls)) ||
+      (dto.videoUrl !== undefined && (dto.videoUrl ?? null) !== (data.videoUrl ?? null));
+    let nextStatus: 'published' | 'draft' | 'pending' | 'review' | 'rejected' | null = null;
+    if (dto.status === 'draft' && currentStatus !== 'draft') {
+      nextStatus = 'draft';
+    } else if (dto.status === 'published' && currentStatus === 'draft') {
+      nextStatus = 'pending';
+    } else if (mediaChanged && currentStatus !== 'draft') {
+      nextStatus = 'pending';
+    }
+    if (Object.keys(updates).length === 0 && !nextStatus) {
       return this.getById(id, uid);
     }
-    await ref.update(updates);
+    if (Object.keys(updates).length > 0) await ref.update(updates);
+    if (nextStatus && nextStatus !== currentStatus) {
+      await transitionRecipeStatus(id, nextStatus);
+    }
+    if (nextStatus === 'pending') this.moderation.enqueue(id);
     return this.getById(id, uid);
   }
 
@@ -567,10 +601,16 @@ export class RecipesService {
     const parent = await this.db.collection('recipes').doc(parentId).get();
     if (!parent.exists) throw new NotFoundException('Receita original não encontrada');
     const parentData = parent.data() as { status?: string };
-    if ((parentData.status ?? DEFAULT_STATUS) === 'draft') {
-      throw new BadRequestException('Não é possível criar variação de rascunho');
+    if ((parentData.status ?? DEFAULT_STATUS) !== 'published') {
+      throw new BadRequestException('Não é possível criar variação desta receita');
     }
     await this.validateCategoryAndTagIds(dto.categories, dto.tags);
+    assertCleanText({
+      título: dto.title,
+      descrição: dto.description,
+      ingredientes: dto.ingredients,
+      'modo de preparo': dto.preparationSteps,
+    });
     const ref = this.db.collection('recipes').doc();
     const now = new Date();
     const ingredients = dto.ingredients ?? null;
@@ -594,18 +634,12 @@ export class RecipesService {
       ratingsCount: 0,
       ratingSum: 0,
       popularityScore: 0,
-      status: DEFAULT_STATUS,
+      status: 'pending',
       createdAt: now,
     };
 
-    const batch = this.db.batch();
-    batch.set(ref, data);
-    batch.set(
-      this.db.collection('users').doc(authorId),
-      { recipesCount: FieldValue.increment(1) },
-      { merge: true },
-    );
-    await batch.commit();
+    await ref.set(data);
+    this.moderation.enqueue(ref.id);
     return this.getById(ref.id, authorId);
   }
 
@@ -657,7 +691,7 @@ export class RecipesService {
       ratingsCount: recipe.ratingsCount ?? 0,
       ratingSum: recipe.ratingSum ?? 0,
       myRating: myRating ?? null,
-      status: (recipe.status as 'published' | 'draft') ?? DEFAULT_STATUS,
+      status: (recipe.status as RecipeResponseDto['status']) ?? DEFAULT_STATUS,
       createdAt: toISOString(recipe.createdAt),
       author,
     };

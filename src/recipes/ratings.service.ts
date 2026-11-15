@@ -6,6 +6,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/dto/notification.dto';
 import type { RateResponseDto, CommentResponseDto, CommentListResponseDto } from './dto/rate-comment.dto';
 import type { User } from '../models/user.model';
+import { isHiddenFromOthers } from '../moderation/recipe-status';
+import { assertCleanText } from '../moderation/text-filter';
 
 const COMMENTS_COLLECTION = 'comments';
 const IN_QUERY_LIMIT = 30;
@@ -79,6 +81,10 @@ export class RatingsService {
     const blocked = await this.getBlockedIds(requestUserId);
     const recipe = await this.db.collection('recipes').doc(recipeId).get();
     if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
+    const rd = recipe.data() as { authorId?: string; status?: string };
+    if (isHiddenFromOthers(rd.status) && rd.authorId !== requestUserId) {
+      throw new NotFoundException('Receita não encontrada');
+    }
 
     let query = this.db
       .collection(COMMENTS_COLLECTION)
@@ -269,7 +275,7 @@ export class RatingsService {
       ratingSum?: number;
       ratingsCount?: number;
     };
-    if ((recipeData.status ?? 'published') === 'draft') {
+    if (isHiddenFromOthers(recipeData.status)) {
       throw new NotFoundException('Receita não encontrada');
     }
     if (recipeData.authorId === userId) {
@@ -329,7 +335,11 @@ export class RatingsService {
     const recipe = await this.db.collection('recipes').doc(recipeId).get();
     if (!recipe.exists) throw new NotFoundException('Receita não encontrada');
 
-    const recipeData = recipe.data() as { authorId?: string; title?: string };
+    const recipeData = recipe.data() as { authorId?: string; title?: string; status?: string };
+    if (isHiddenFromOthers(recipeData.status)) {
+      throw new NotFoundException('Receita não encontrada');
+    }
+    assertCleanText({ comentário: text });
 
     let effectiveParentId: string | null = null;
     let notifyUserId: string | null = null;

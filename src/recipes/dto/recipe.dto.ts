@@ -201,8 +201,12 @@ export class RecipeResponseDto {
     nullable: true,
   })
   myRating?: number | null;
-  @ApiPropertyOptional({ enum: ['published', 'draft'], default: 'published' })
-  status?: 'published' | 'draft';
+  @ApiPropertyOptional({
+    enum: ['published', 'draft', 'pending', 'review', 'rejected'],
+    default: 'published',
+    description: 'pending = em análise; review = em revisão manual; rejected = reprovada (só o autor vê)',
+  })
+  status?: 'published' | 'draft' | 'pending' | 'review' | 'rejected';
   @ApiProperty()
   createdAt: string;
   @ApiPropertyOptional({ type: () => UserResponseDto })

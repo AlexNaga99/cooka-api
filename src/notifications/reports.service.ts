@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { getFirestoreDb } from '../config/firebase.config';
 import { toISOString } from '../common/utils/firestore.util';
+import { transitionRecipeStatus } from '../moderation/recipe-status';
 import { ReportReason, ReportRequestDto, ReportResponseDto } from './dto/report.dto';
 
 const REPORTS_COLLECTION = 'reports';
+const AUTO_HIDE_REPORTS = 3;
 
 @Injectable()
 export class ReportsService {
@@ -45,6 +47,8 @@ export class ReportsService {
       createdAt: now,
     });
 
+    await this.autoHideIfReported(recipeId);
+
     return {
       id: ref.id,
       targetType: 'recipe',
@@ -54,6 +58,23 @@ export class ReportsService {
       reporterId,
       createdAt: now.toISOString(),
     };
+  }
+
+  /** Muitas denúncias distintas escondem a receita (status `review`) até alguém revisar. */
+  private async autoHideIfReported(recipeId: string): Promise<void> {
+    const reports = await this.db
+      .collection(REPORTS_COLLECTION)
+      .where('targetType', '==', 'recipe')
+      .where('targetId', '==', recipeId)
+      .get();
+    const reporters = new Set(reports.docs.map((d) => (d.data() as { reporterId: string }).reporterId));
+    if (reporters.size < AUTO_HIDE_REPORTS) return;
+    const doc = await this.db.collection('recipes').doc(recipeId).get();
+    if ((doc.data() as { status?: string } | undefined)?.status === 'published') {
+      await transitionRecipeStatus(recipeId, 'review', {
+        moderation: { verdict: 'review', at: new Date(), source: 'reports', reports: reporters.size },
+      });
+    }
   }
 
   async reportUser(
