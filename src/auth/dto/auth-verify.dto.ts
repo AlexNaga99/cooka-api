@@ -35,6 +35,13 @@ export class UserResponseDto {
   createdAt: string;
   @ApiProperty({ required: false, default: false })
   isAdsFree?: boolean;
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description: 'Respostas do onboarding (só para o próprio usuário). null = ainda não respondeu.',
+    example: { categoryIds: ['pasta'], cookingLevel: 'beginner', cookingTime: 'quick', goal: 'both' },
+  })
+  preferences?: Record<string, unknown> | null;
 }
 
 export class AuthVerifyResponseDto {

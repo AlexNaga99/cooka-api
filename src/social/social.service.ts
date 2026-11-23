@@ -114,6 +114,15 @@ export class SocialService {
       }
       updates.photoUrl = dto.photoUrl;
     }
+    if (dto.preferences !== undefined) {
+      const prefs = dto.preferences;
+      const clean: Record<string, unknown> = { completedAt: new Date() };
+      if (prefs.categoryIds !== undefined) clean.categoryIds = [...new Set(prefs.categoryIds)];
+      if (prefs.cookingLevel !== undefined) clean.cookingLevel = prefs.cookingLevel;
+      if (prefs.cookingTime !== undefined) clean.cookingTime = prefs.cookingTime;
+      if (prefs.goal !== undefined) clean.goal = prefs.goal;
+      updates.preferences = clean;
+    }
     if (Object.keys(updates).length === 0) {
       return this.getProfile(uid, true);
     }

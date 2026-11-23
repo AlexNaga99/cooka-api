@@ -113,6 +113,29 @@ export class AuthService {
       favoriteRecipeIds: includePrivate ? (data.favoriteRecipeIds ?? []) : [],
       createdAt: dateStr,
       isAdsFree: data.isAdsFree ?? false,
+      // Preferências do onboarding são privadas (só o próprio usuário).
+      preferences: includePrivate ? this.toPreferencesResponse(data.preferences) : null,
+    };
+  }
+
+  private toPreferencesResponse(p: User['preferences']): Record<string, unknown> | null {
+    if (!p) return null;
+    const completedAt = p.completedAt as unknown;
+    const completedAtStr =
+      typeof completedAt === 'object' &&
+      completedAt !== null &&
+      'toDate' in completedAt &&
+      typeof (completedAt as { toDate: () => Date }).toDate === 'function'
+        ? (completedAt as { toDate: () => Date }).toDate().toISOString()
+        : completedAt instanceof Date
+          ? completedAt.toISOString()
+          : null;
+    return {
+      categoryIds: p.categoryIds ?? [],
+      cookingLevel: p.cookingLevel ?? null,
+      cookingTime: p.cookingTime ?? null,
+      goal: p.goal ?? null,
+      completedAt: completedAtStr,
     };
   }
 

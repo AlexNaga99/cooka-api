@@ -1,3 +1,12 @@
+export interface UserPreferences {
+  categoryIds?: string[];
+  cookingLevel?: 'beginner' | 'intermediate' | 'advanced';
+  cookingTime?: 'quick' | 'medium' | 'relaxed';
+  goal?: 'discover' | 'save' | 'publish' | 'both';
+  /** Quando o usuário respondeu o onboarding de personalização. */
+  completedAt?: Date;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -14,6 +23,8 @@ export interface User {
   favoriteRecipeIds?: string[];
   createdAt: Date;
   isAdsFree?: boolean;
+  /** Respostas do onboarding (só devolvidas ao próprio usuário). */
+  preferences?: UserPreferences;
   deletedAt?: Date | null;
 }
 
